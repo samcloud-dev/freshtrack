@@ -355,3 +355,94 @@ automatically stopped broken or messy code from reaching `main`.
 - SHIP: push the image to Docker Hub tagged with the git SHA, only on `main`, token as a GitHub secret.
 - Later: a weekly scheduled re-scan, so new fixes are noticed without a code push.
 - Still owed: CHECK-stage drills (Ruff, pytest, bandit, Trivy secret). Later todo: gunicorn access logs.
+
+---
+
+## Entry 6 — 2026-10-24 — SHIP stage: protect `main`, then push the scanned api image to Docker Hub
+
+**Problem**
+- The api image was built, proven and scanned in CI, but it was thrown away at the end of every run.
+  Nothing could be pulled later by Kubernetes.
+- `main` had no protection. Two commits ("Added README" `b0c4250` and its revert `73e24a6`) had gone
+  straight to `main` without a PR. Once SHIP exists, every push to `main` publishes an image,
+  so a direct push could ship code that never went through the PR checks.
+
+**Decision**
+- Protect `main` first, then add SHIP.
+- Ruleset `protect-main` (Active, empty bypass list, target: default branch): restrict deletions,
+  block force pushes, require a pull request (0 approvals because I work alone, squash only),
+  require status checks `checks` and `SonarCloud Code Analysis`, branch must be up to date.
+- A separate `ship` job instead of more steps in `checks`:
+  - the Docker Hub token is only in a job that runs on a push to `main`;
+  - the image reaches it as an artifact (`image.tar`, kept 1 day), so the exact scanned file is pushed, not a rebuild.
+- The token lives in a GitHub **environment** `dockerhub` that only the `main` branch may use.
+  A repository secret would be available to any branch, because CI runs on every push.
+- Docker Hub token: Repo Read & Write (no Delete), 90-day expiry. A Docker Hub token cannot be limited to one
+  repository, so the environment lock matters. The username is an environment variable, not a secret.
+- `docker login --password-stdin` in a plain step instead of `docker/login-action`: one less third-party action.
+- Tag = commit SHA only, no `latest`.
+- New actions pinned to full SHAs, checked against their release tags, both released 2026-10-07 (past the cooldown):
+  `actions/upload-artifact` v7.0.2 → `cf430e03…`, `actions/download-artifact` v8.0.2 → `9000827c…`.
+  Each tag commit is the current tip of that repo's `main` and is signed (verified by GitHub). Inputs checked in each `action.yml`.
+- Docker Hub repository `samayohub/freshtrack-api`, public (no secrets inside; interviewers can pull it).
+
+**Implementation**
+- Ruleset and environment created in the GitHub settings (no code).
+- Branch `ship/dockerhub`, PR #10, squash-merged as `4530ec1`.
+- `.github/workflows/ci.yml`: header updated; new step "Hand the image to the ship job" after the Trivy gate
+  (only on a push to `main`); new job `ship` (`needs: checks`, same `if`, `environment: dockerhub`):
+  get the scanned image → load → tag → log in → push → log out (`if: always()`).
+
+**Verification**
+- Ruleset: GitHub's API for `main` lists `deletion`, `non_fast_forward`, `pull_request` (0 approvals, squash),
+  `required_status_checks` (`checks`, `SonarCloud Code Analysis`, strict).
+- Environment: API shows `dockerhub` with a custom branch rule allowing only the branch `main`.
+- Branch run `40141555540` (`9585cb0`): `checks` green, hand-off step skipped, `ship` skipped (as predicted).
+- `main` run `40141996431` (`4530ec1`): `checks` 49 s → `ship` 26 s, all green, artifact `api-image` 49.9 MB.
+- Docker Hub: 0 tags before, 1 tag after: `4530ec151d4f2542353a5ef544fbbe65f95a83a5`
+  (digest `sha256:1f337e0a…89e2`, 52.5 MB compressed). The tag is the squash merge commit, not the branch commit.
+- Pulled on my laptop and ran it: `/health` → 200 `{"status":"ok"}` (`Server: gunicorn`);
+  `/ready` → 503 `{"status":"not ready"}` (expected: no database yet).
+
+**Failure drill: a direct push to `main`** (Predict → Break → Observe → Fix → Verify)
+- Predict: the commit succeeds locally, the push fails because of the rules, the commit stays only on my laptop,
+  and being the owner does not let me through. All correct. Refined: GitHub's server refuses the push
+  (Git on my laptop knows nothing about rules), and owners are blocked because the bypass list is empty.
+- Break: `git commit --allow-empty -m "drill: direct push to main"` then `git push origin main`.
+- Observe: `remote: error: GH013: Repository rule violations found for refs/heads/main`,
+  "Changes must be made through a pull request", "2 of 2 required status checks are expected",
+  `! [remote rejected] main -> main`. Local `main` was "ahead 1" (`c6e015b`); GitHub stayed on `933aa09`.
+- Fix: `git reset --hard origin/main` (safe: the working tree was clean, only the empty commit was dropped).
+- Verify: `## main...origin/main`, `933aa09`.
+- Explain-back: a direct push to `main` would skip the checks; refined to "once SHIP exists, it would publish
+  an unchecked image". "Server side" refined to "enforced by GitHub, where everyone pushes, not by memory".
+- SHIP predictions (branch push and after merge): 5 of 6 fully right; corrected that `ship` shows as *skipped*,
+  and that the whole `checks` job runs again on `main` before `ship` starts.
+
+**Troubleshooting**
+1. *GitHub API answered 301 for `s12samola-wft/freshtrack`.* The repository had moved to `samcloud-dev/freshtrack`.
+   The local remote already pointed to the new name, and CI and SonarCloud still worked.
+2. *The ruleset screenshot did not show SonarCloud, but the API listed it as required.* The check list was cut off in
+   the screenshot. The API is the source of truth for what is enforced.
+3. *Which tag to look for on Docker Hub?* A squash merge makes a new commit on `main`, so the tag is `4530ec1…`,
+   not the branch commit `9585cb0`.
+4. *Deleting merged branches.* After a squash merge, `git branch -d` refuses ("not fully merged"), because the branch
+   commits are not on `main`. I first confirmed each branch had no difference from its squash commit
+   (`git diff`), then used `git branch -D` and `git push origin --delete`.
+
+**Lesson**
+- A pipeline's order only protects me if nobody can walk around it. Branch protection is what makes
+  "only checked code ships" true, and I proved it with a rejected push, not just a settings page.
+- I keep the key in a locker that opens only for `main`: an environment secret, not a repository secret,
+  because my CI runs on every branch.
+- I ship the exact image I scanned. Rebuilding would give me a new, unscanned image with the same name.
+- A green CI run proves I pushed the image; pulling it and calling `/health` proves someone can use it.
+- One tag per commit, never `latest`: I always know which code is running, and rolling back means picking an older SHA.
+
+**Next step**
+- Done: `docs/architecture.md` (SHIP Built, ruleset and token security) and README status updated.
+- Still to answer (explain-back): why does `ship` load an artifact instead of rebuilding, and which two locks stop a branch from shipping?
+- Next stage: Minikube deploy of the api with PostgreSQL (StatefulSet, PVC, Secret, probes), pulling `samayohub/freshtrack-api:<SHA>`.
+- Later: renew the Docker Hub token before it expires (with the planned 90 days: about 2027-01-22; confirm the date on Docker Hub).
+  Weekly scheduled re-scan. Trivy 0.76.0 is now past the cooldown (upgrade in a small PR).
+- Still owed: CHECK-stage drills (Ruff, pytest, bandit, Trivy secret).

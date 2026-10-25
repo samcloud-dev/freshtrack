@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** API skeleton and container CI. The household application is still being built; grocery tracking and email reminders are planned.
+**Current stage:** API skeleton with container CI that publishes the image to Docker Hub. The household application is still being built; grocery tracking and email reminders are planned.
 
 ## Contents
 
@@ -28,7 +28,7 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Tests | Four pytest tests covering health and readiness responses; successful database access is mocked |
 | Container | Gunicorn server, digest-pinned Python base image, hash-locked dependencies, non-root UID `10001` |
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
-| Registry publishing | Planned: Docker Hub, commit-SHA tags, only from `main` |
+| Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
 | Household features | Planned: grocery storage, active list, item status updates, and reminders |
 | Deployment | Planned: Minikube first, then a short k3s trial on AWS |
 
@@ -133,7 +133,7 @@ Runtime dependencies are declared in `api/requirements.in`; development tools ar
 
 ## CI pipeline
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every branch push and every pull request. Its single job executes these steps in order:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every branch push and every pull request. The `checks` job runs the first four stages in order; the `ship` job runs only after a push to `main`, once `checks` has passed:
 
 | Stage | Checks |
 |---|---|
@@ -141,10 +141,13 @@ Runtime dependencies are declared in `api/requirements.in`; development tools ar
 | Build | Build the API image tagged with the Git commit SHA |
 | Prove | Start the image and require `/health` to respond successfully |
 | Scan | Save the image to a tar file; run a full Trivy report, then a gate for fixable HIGH/CRITICAL vulnerabilities with secret scanning enabled |
+| Ship | `main` only: receive the scanned image tar from `checks` as a one-day artifact, load it, tag it `samayohub/freshtrack-api:<commit SHA>`, log in with a token from the `main`-only `dockerhub` environment, push, log out |
 
 A failed step blocks subsequent normal steps. Container logs are requested even after failure. The full image report shows findings at all severities; the vulnerability gate uses `--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`.
 
-SonarCloud is documented as running separately through its GitHub app's Automatic Analysis. It is not a step in this workflow. Registry publishing and deployment are not implemented yet.
+SonarCloud is documented as running separately through its GitHub app's Automatic Analysis. It is not a step in this workflow. Deployment is not implemented yet.
+
+The `main` branch is protected by a repository ruleset: changes need a pull request, the `checks` job and SonarCloud must pass, the branch must be up to date, and force pushes and deletion are blocked, with no bypass. The image that ships is the exact file that was scanned; it is not rebuilt.
 
 The [engineering journal](docs/journal.md) records a failure drill where an old base image passed the build and health check but failed the image vulnerability gate. Those historical scan results are evidence from that run, not a claim about today's vulnerability status.
 
@@ -153,6 +156,7 @@ The [engineering journal](docs/journal.md) records a failure drill where an old 
 - The API image uses a digest-pinned base, installs hash-verified wheels, and runs as non-root UID `10001` with Gunicorn's control socket disabled.
 - GitHub Actions are pinned to commit SHAs. The workflow token has read-only repository access, and checkout does not persist credentials.
 - Trivy scans the saved image through a read-only file mount without receiving the Docker socket.
+- The Docker Hub token (Read & Write, with an expiry date) is stored only in the GitHub environment `dockerhub`, which only the `main` branch can use. Feature branches and pull requests never receive it. Images are tagged only with the commit SHA, never `latest`.
 - Secrets belong in environment variables or a secret store; never commit credentials or bake them into an image.
 - The API currently has no authentication. Before any public exposure, the deployment must provide TLS and basic authentication at the Ingress or Gateway.
 - The filesystem dependency scan currently covers runtime requirements; development dependency scanning, Git history secret scanning, and misconfiguration scanning are not implemented.
@@ -160,11 +164,11 @@ The [engineering journal](docs/journal.md) records a failure drill where an old 
 
 ## Roadmap
 
-These are planned milestones, not completed features or promised dates. The next recorded step is registry publishing; later sequencing can be refined as the application develops.
+These are planned milestones, not completed features or promised dates. Milestone 1 (ship the API image) is done; later sequencing can be refined as the application develops.
 
 | Milestone | Planned work | Completion evidence |
 |---|---|---|
-| 1. Ship the API image | Publish to Docker Hub after successful checks, only on `main`, tagged with the commit SHA | Pull the published image and verify `/health` |
+| 1. Ship the API image (**done**) | Publish to Docker Hub after successful checks, only on `main`, tagged with the commit SHA | Pull the published image and verify `/health` (verified 2026-10-24, see journal Entry 6) |
 | 2. Implement household tracking | PostgreSQL schema, item validation, add/list/status API routes, Flask HTML interface, integration tests | Add groceries, see date ordering, mark used/discarded, and verify retained records |
 | 3. Add reminders | Expiry checker, date-type wording, three-day window, Mailpit tests, morning schedule | Inspect captured emails for due, past-date, and no-due-item cases |
 | 4. Deploy in the local lab | Helm, Minikube, persistent PostgreSQL storage, probes, resource settings, network restrictions, protected access | Demo the application and verify recovery through failure drills |
@@ -177,7 +181,7 @@ Outstanding learning work includes CHECK-stage failure drills for Ruff, pytest, 
 
 ```text
 freshtrack/
-├── .github/workflows/ci.yml  # Code checks, image build, smoke test, scans
+├── .github/workflows/ci.yml  # Code checks, image build, smoke test, scans, ship to Docker Hub
 ├── api/
 │   ├── app.py                # Flask application factory and probe endpoints
 │   ├── Dockerfile            # API image served by Gunicorn

@@ -1,10 +1,10 @@
 # FreshTrack — Architecture
 
-Last updated: 2026-10-16
+Last updated: 2026-10-25
 
 **Status rule:** a part is marked **Built** only when it is merged to `main` and verified.
-Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE and SCAN
-(section 9; BUILD to SCAN for the api image only).
+Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE, SCAN and SHIP
+(section 9; BUILD to SHIP for the api image only), and the `main` branch ruleset.
 The api has only `/health` and `/ready` so far, so it is still Planned.
 
 ---
@@ -133,7 +133,7 @@ AWS infrastructure is defined in a separate repo, `terraform-aws-platform`.
 - Hardened images: pinned base image digest, hash-locked dependencies, non-root user, small image.
 - NetworkPolicies limit who can talk to whom.
 
-## 9. Delivery pipeline (CHECK to SCAN built for the api; SHIP planned)
+## 9. Delivery pipeline (CHECK to SHIP built for the api)
 
 **Check → Build → Prove → Scan → Ship.** Like a food factory: inspect the ingredients,
 cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops everything after it.
@@ -144,17 +144,21 @@ cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops eve
 | 2 | BUILD | Production | Build the Docker image for web, api and expiry-checker, tagged with the commit SHA | Dockerfile errors, missing dependencies | **Built** for the api (PR #7); web and expiry-checker Planned |
 | 3 | PROVE | Taste test on the line | Start the container and call `/health` (the checker runs a dry run) | An image that builds but won't start | **Built** for the api (PR #7) |
 | 4 | SCAN | QC release testing | Trivy image scan: fail on fixable HIGH/CRITICAL, report everything | Vulnerabilities and secrets in the base image, OS packages and Python packages | **Built** for the api (PR #7) |
-| 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | (release step) | Planned |
+| 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | Nothing new: it only releases what passed every gate. A token in the `main`-only environment `dockerhub` | **Built** for the api (PR #10) |
 
 ```
-Built today (.github/workflows/ci.yml, one job "checks"):
+Built today (.github/workflows/ci.yml, two jobs):
 
 push (any branch) / PR → Ruff lint → Ruff format → pytest → bandit → Trivy fs
   → build api image (tag = commit SHA) → start it, call /health
-  → docker save → Trivy image: full report → Trivy image: gate → show container logs (always)
+  → docker save → Trivy image: full report → Trivy image: gate
+  → (main only) hand image.tar to the ship job as an artifact (kept 1 day)
+  → show container logs (always)
                           (a failed step stops the steps after it)
 
-Planned after it: Ship* (*only on main: push to Docker Hub)
+job "ship" (push to main only, needs: checks, environment: dockerhub):
+  download image.tar → docker load → tag samayohub/freshtrack-api:<commit SHA>
+  → docker login (token via stdin) → docker push → docker logout (always)
 SonarCloud runs alongside through Automatic Analysis (its GitHub app, not ci.yml).
 Its quality gate must pass before merge.
 ```
@@ -178,16 +182,26 @@ each push runs CI twice (`push` and `pull_request`); accepted because a run take
 - Trivy runs from its official image pinned by digest, not through `trivy-action` (its tags were hijacked in March 2026).
 - Python packages install only as wheels and only if their hashes match the lock file
   (`--only-binary :all: --require-hashes`).
-- (Planned) The Docker Hub token is used only in the Ship step, only on `main`. Pull requests never see it.
-- An image is scanned before it could be pushed: SHIP (planned) will come after the gate, so a vulnerable image never reaches the registry.
+- The Docker Hub token (Read & Write, 90-day expiry) is a secret in the GitHub environment `dockerhub`,
+  which only the `main` branch may use. Feature branches and pull requests never see it.
+  The username is an environment variable (not sensitive). Login uses `docker login --password-stdin`, not a third-party action.
+- The image is scanned before it is pushed: `ship` needs `checks`, so a vulnerable image never reaches the registry.
+- The image that ships is the exact file that was scanned (passed as an artifact), not a rebuild.
+- Tags are the commit SHA only, never `latest`, so every published image traces back to one commit.
+- The `main` branch is protected by the ruleset `protect-main`: pull request required (squash only, 0 approvals
+  because I work alone), `checks` and `SonarCloud Code Analysis` must pass, branch must be up to date,
+  no force push, no deletion, empty bypass list. Tested: a direct push was rejected (GH013).
 - Trivy reads the image as a read-only tar file (`docker save`), never through the Docker socket.
 - The api image runs as non-root user 10001, from a base image pinned by digest.
 
 **Speed**
-- Today: a full run takes about 40 seconds (run `38953043940`). The two image-scan steps share one
+- Branch and PR runs: about 50 seconds (`checks` only). A `main` run with SHIP: about 1 min 22 s
+  (run `40141996431`: `checks` 49 s, `ship` 26 s, plus the artifact hand-off).
+- Earlier, before SHIP: about 40 seconds (run `38953043940`). The two image-scan steps share one
   Trivy database download (`--cache-dir`); no other caches are used.
-- `timeout-minutes: 10` on the job. `concurrency` cancels outdated pull request runs; runs on `main` are never cancelled.
+- `timeout-minutes: 10` on each job. `concurrency` cancels outdated pull request runs; runs on `main` are never cancelled.
 - Decided at BUILD: one job for now, so the image built in one step is still there for the next steps.
+  Decided at SHIP: a separate `ship` job, so the token lives only in a `main`-only job; the image reaches it as an artifact.
   Separate jobs per app are reconsidered when web and expiry-checker get images.
 
 **Limits (what CI does not catch):** logic with no test, wrong settings inside the
