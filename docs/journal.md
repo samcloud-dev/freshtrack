@@ -446,3 +446,87 @@ automatically stopped broken or messy code from reaching `main`.
 - Later: renew the Docker Hub token before it expires (with the planned 90 days: about 2027-01-22; confirm the date on Docker Hub).
   Weekly scheduled re-scan. Trivy 0.76.0 is now past the cooldown (upgrade in a small PR).
 - Still owed: CHECK-stage drills (Ruff, pytest, bandit, Trivy secret).
+
+---
+
+## Entry 7 — 2026-10-31 — Minikube dress rehearsal begins: verified image, new cluster, Namespace and api Deployment
+
+**Problem**
+- The api image was on Docker Hub, but I had not yet checked that the published image is the one CI scanned.
+- FreshTrack will run for one week on k3s on AWS. I want to find problems at home on Minikube first,
+  so the AWS week costs as little as possible.
+- My Minikube (v1.38.1) only supported Kubernetes up to v1.35.1, while the k3s `stable` channel is v1.36.5+k3s1.
+  Its default network plugin also ignores NetworkPolicies, while k3s enforces them.
+
+**Decision**
+- Plan agreed for the rehearsal: plain YAML first (Namespace, api Deployment, Service, Secret, PostgreSQL),
+  then app milestone A (items table and routes), then a Helm chart with `values-minikube.yaml` and `values-aws.yaml`,
+  then Traefik, cert-manager, basic auth, NetworkPolicy, OpenBao + External Secrets Operator + Reloader,
+  Argo CD, and finally a memory measurement with `kubectl top`.
+- The Ingress will route only `/` to web. The api stays internal (ClusterIP); a mobile app is out of scope for v1.
+- Upgrade Minikube to v1.39.0 (released 2026-09-02, past the cooldown): it supports Kubernetes 1.36 and uses containerd by default, like k3s.
+- A new profile `freshtrack` instead of deleting the old ones: Kubernetes v1.36.4 (the newest 1.36 that Minikube offers;
+  same minor version as k3s, only the patch differs), containerd, Calico, 6 GB / 4 CPUs as a ceiling, metrics-server.
+- The api image is referenced by tag **and** digest, so the cluster runs exactly the bytes CI scanned.
+
+**Implementation**
+- Branch `deploy/k8s-basics` (not pushed yet; one PR after the plain-YAML steps).
+- Minikube v1.39.0 installed from the GitHub release after a SHA-256 check.
+- `minikube start -p freshtrack --kubernetes-version=v1.36.4 --container-runtime=containerd --cni=calico --memory=6g --cpus=4`,
+  `minikube addons enable metrics-server`, `minikube profile freshtrack`. Old profiles `minikube` and `netpol-lab` kept.
+- `deploy/k8s/namespace.yaml` (`03c6ded`): Namespace `freshtrack` with the recommended labels.
+- `deploy/k8s/api-deployment.yaml` (`13d708c`): 1 replica; image `samayohub/freshtrack-api:e6c9f93…@sha256:adb7d02f…`;
+  no service account token; non-root user 10001, seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped;
+  requests 50m CPU / 96Mi, limits 250m CPU / 192Mi; startup probe `/health`, readiness probe `/ready` (timeout 3 s,
+  because the app waits up to 2 s for the database), liveness probe `/health`. No `DATABASE_URL` yet (on purpose).
+
+**Verification**
+- Image: `docker pull` of tag `e6c9f93…`, then `docker inspect` showed `sha256:adb7d02f…c4aa9`, the same digest as Docker Hub.
+  Ran it with `-p 127.0.0.1:8000:8000`: `/health` → 200 `{"status":"ok"}`, `/ready` → 503 `{"status":"not ready"}` (no database).
+- Minikube download: `sha256sum --check` → `OK` (`b738496d…5aa4`); `minikube version` → v1.39.0; old profiles still listed.
+- Cluster: node `freshtrack` `Ready`, v1.36.4, `containerd://2.3.4`; `calico-node` and `calico-kube-controllers` Running.
+  Empty-cluster baseline from `kubectl top nodes`: 219m CPU, **1350Mi** memory (Kubernetes + Calico + metrics-server, no FreshTrack yet).
+- Namespace: before, 4 system namespaces; `apply` → `created`; second `apply` → `unchanged`; labels shown with `--show-labels`.
+- Deployment: Pod `Running`, READY `0/1`, 0 restarts; events show readiness `statuscode: 503`. A server-side dry run passed before every apply.
+- After adding the startup probe: startup probe failed 3 times while gunicorn booted (15 allowed), then passed; no liveness failures.
+
+**Failure drills**
+- *Drift (Namespace).* Predict: `apply` prints `configured` and the label comes back. Break:
+  `kubectl label ns freshtrack app.kubernetes.io/part-of=oops --overwrite`. Observe: label shows `oops`.
+  Fix: `kubectl apply -f deploy/k8s/namespace.yaml` → `configured`. Verify: label back to `freshtrack`. Both predictions right.
+  Note: `apply` only restores fields written in the file; a label added by hand that is not in the file would stay.
+- *No database (Deployment).* Predicted 0/1, no restarts, `/health` passing and `/ready` failing: right.
+  Predicted STATUS "Not Ready": wrong, STATUS shows `Running` (the process); READY shows the probe result.
+
+**Troubleshooting**
+1. *`docker: command not found` in WSL.* Docker Desktop was not running. Minikube (Docker driver) was down for the same reason.
+2. *The container "stopped" after `docker run`.* It had not stopped: without `-d` it runs in the foreground and waits.
+   `docker ps` showed it Up. I used a second terminal for `curl`.
+3. *`rm: remove write-protected regular file`.* The downloaded binary belonged to root (the download had run with `sudo`).
+   In `/tmp` (sticky bit) only the owner can delete a file, so `sudo rm`. Only the `install` step needs `sudo`.
+4. *Second `kubectl apply` printed `unchanged`, not `created`.* `apply` is declarative: it compares the file with the cluster
+   and only changes what differs.
+5. *Liveness probe failed once with `connection refused`.* Probes started at once, before gunicorn was listening.
+   1 failure out of 3 allowed, so no restart. Added a startup probe, which holds off liveness and readiness until the app has booted.
+6. *Two Pods, both 0/1, after adding the startup probe.* A changed Pod template makes a new ReplicaSet (rolling update).
+   With 1 replica, `maxSurge 25%` rounds up to 1 and `maxUnavailable 25%` rounds down to 0, so the old Pod is only removed
+   once the new one is Ready. Without a database it never is, so the rollout waits. It should finish in Step 5.
+7. *The cluster pulled the image again (25.6 s)* although my laptop's Docker had it: Minikube's containerd has its own image store.
+
+**Lesson**
+- I check the digest, not just the tag: the digest proves I run the exact image CI scanned.
+- `127.0.0.1` keeps a port reachable only from my laptop. The api has no login and will hold personal data, so it stays closed to others.
+- A rehearsal is only useful if it matches the real thing, so I matched the Kubernetes version, container runtime
+  and network-policy enforcement of k3s.
+- `kubectl apply` describes what I want, not what to do. Running it again is safe, which is what GitOps relies on.
+- Running is not Ready. Readiness failures stop traffic; only liveness failures restart a container. A startup probe protects slow starts.
+- A stuck rollout is a safety feature: Kubernetes will not replace a working version with one that is not Ready.
+- I only use `sudo` for the step that needs it.
+
+**Next step**
+- Step 3: api Service (ClusterIP), then Step 4: database Secret, Step 5: PostgreSQL StatefulSet + PVC (the rollout should then finish).
+- Later on this branch's PR: update `docs/architecture.md` (open decision 2: Traefik Ingress; OpenBao chosen; monitoring stays on Minikube
+  during the AWS week; Minikube profile details) and the README roadmap order.
+- Small refinement for the Helm step: give the startup probe `timeoutSeconds: 2`.
+- Still owed: Entry 6 explain-back (artifact vs rebuild; two locks), CHECK-stage drills, Trivy 0.76.0 upgrade,
+  confirm the Docker Hub token expiry date.
