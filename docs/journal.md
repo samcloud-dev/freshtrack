@@ -530,3 +530,75 @@ automatically stopped broken or messy code from reaching `main`.
 - Small refinement for the Helm step: give the startup probe `timeoutSeconds: 2`.
 - Still owed: Entry 6 explain-back (artifact vs rebuild; two locks), CHECK-stage drills, Trivy 0.76.0 upgrade,
   confirm the Docker Hub token expiry date.
+
+## Entry 8 — 2026-11-02 — api Service (ClusterIP) and the database Secret
+
+**Problem**
+- Pods get a new IP every time they are replaced, so web and the expiry-checker need one stable address to reach the api.
+- The api (and soon PostgreSQL) needs a database password, which must never be baked into an image or committed to Git.
+- Before starting: Docker Desktop was off again, so the `freshtrack` Minikube profile was down.
+
+**Decision**
+- A `ClusterIP` Service named `api`: reachable only inside the cluster, because the api has no login.
+  Port 80 for callers, `targetPort: http` (the named container port 8000), so a port change only touches the Deployment.
+- The selector uses only the two `app.kubernetes.io/*` labels, never `pod-template-hash`, so it keeps matching across rollouts.
+- The Secret is created by hand with `kubectl create secret` from a file **outside the repo**. Nothing is committed.
+  OpenBao + External Secrets Operator replace this step after the Helm stage (option A). I considered installing them first,
+  but they need Helm, OpenBao dev mode keeps data only in memory (this morning's restart would have wiped it),
+  and the Pod side (`secretKeyRef`) stays exactly the same, so only one command is replaced later.
+- Password from `openssl rand -hex 24`: hex characters only, so nothing breaks the `DATABASE_URL`
+  (`@`, `/` and `:` mean something in a URL).
+
+**Implementation**
+- `deploy/k8s/api-service.yaml`: Service `api`, namespace `freshtrack`, type `ClusterIP`, port `http` 80 → `targetPort: http`, TCP.
+  Written by me; a final newline was added after review.
+- `~/.freshtrack/` (mode 700) holds `db.env` (mode 600, created with `umask 077`) with the keys
+  `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and `DATABASE_URL` (host `postgres:5432`, the Step 5 Service name).
+- `kubectl create secret generic postgres-credentials -n freshtrack --from-env-file=$HOME/.freshtrack/db.env`,
+  after a `--dry-run=server` check.
+
+**Verification**
+- Service: server dry run → `created (server dry run)`; apply → `created`; ClusterIP `10.109.109.221`, `80/TCP`.
+- EndpointSlice `api-…`: port 8000 (the named port resolved), 2 addresses (`10.244.23.134`, `10.244.23.138`),
+  both `ready=false serving=false`.
+- `curl` from a temporary Pod (`curlimages/curl:8.17.0`) to `http://api/health`: DNS resolved `api` to `10.109.109.221`,
+  then `Connection refused` after 12 ms. Expected until Step 5: no Pod is Ready, so there is nothing to forward to.
+- Secret: `kubectl describe` shows only key names and byte sizes, which match the expected lengths without showing any value:
+  `POSTGRES_USER` 10, `POSTGRES_DB` 10, `POSTGRES_PASSWORD` 48 (24 random bytes as hex), `DATABASE_URL` 97
+  (13 + 10 + 1 + 48 + 15 + 10). Type `Opaque`.
+- File permissions: `~/.freshtrack` `drwx------`, `db.env` `-rw-------`.
+
+**Failure drills**
+- *Prediction check (Service).* Predicted 2 endpoints and `curl` failing because there is no database.
+  Half right: 2 addresses are listed, but 0 are ready, which `-o wide` does not show.
+  My first explanation (the startup probe was still running) was wrong: both Pods showed `started=true`.
+  The **readiness** probe fails (no database), so kube-proxy has no ready endpoint and refuses the connection before Flask is reached.
+  That is why even `/health` failed.
+- *Prediction check (Secret).* Predicted `describe` shows the name and keys, not values: right (I listed one key twice and missed `POSTGRES_PASSWORD`).
+- Still to do for this stage: a Break drill on the Service (for example a wrong selector label → empty EndpointSlice).
+
+**Troubleshooting**
+1. *Each api Pod showed `RESTARTS 1` after Minikube came back.* The last state was reason `Unknown`, exit code 255:
+   the node had shut down with Docker Desktop, and the kubelet started the containers again on boot. Not a liveness kill
+   (that shows reason `Error` and a `Killing` event).
+2. *The old Pod (no startup probe) logged a liveness `connection refused` again during boot; the new Pod logged startup-probe
+   failures instead*, including one `context deadline exceeded` (default 1 s timeout). This confirms the startup probe and the planned `timeoutSeconds: 2`.
+3. *The `curl` output appeared twice.* curl finished before `kubectl run -it` could attach, so kubectl fell back to printing the logs.
+   It was one attempt: the same source port (38358) in both copies.
+
+**Lesson**
+- A Service finds Pods by labels, and forwards only to **Ready** ones. A listed endpoint is not the same as a ready endpoint.
+- Liveness failure restarts the container; readiness failure stops traffic. A failed readiness probe blocks every request, not just `/ready`.
+- `Connection refused` in milliseconds means "nothing ready behind this address"; a timeout would point to something dropping packets.
+- Kubernetes Secrets are base64-encoded, not encrypted. RBAC and etcd encryption protect them, and Git must never contain the values.
+- I can verify a Secret without exposing it by comparing byte sizes with the expected lengths.
+- Doing the Secret by hand first shows me what OpenBao + ESO will automate; only the creation step changes later.
+
+*(Samson: reword these in your own words if you like.)*
+
+**Next step**
+- Step 5: PostgreSQL as a StatefulSet with a headless Service and a PVC (new terms: StatefulSet, headless Service, PV, PVC, StorageClass).
+  Check the current supported PostgreSQL versions first. Then wire `DATABASE_URL` into the api Deployment with `secretKeyRef`.
+  Expected result: `/ready` → 200, both EndpointSlice addresses `ready=true`, the stuck rollout finishes, the same `curl` test succeeds.
+- Optional: label the Secret with `app.kubernetes.io/part-of=freshtrack` and `app.kubernetes.io/name=postgres` (not done yet).
+- Still owed: Entry 6 explain-back, CHECK-stage drills, Trivy 0.76.0 upgrade, confirm the Docker Hub token expiry date.
