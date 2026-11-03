@@ -30,7 +30,7 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
 | Household features | Planned: grocery storage, active list, item status updates, and reminders |
-| Deployment | In progress on branch `deploy/k8s-basics` (not merged): plain manifests in `deploy/k8s/` for the Namespace, api Deployment and api Service, applied to a Minikube lab. The api Pod runs but is not Ready until PostgreSQL is added. Then Helm, and later a short k3s trial on AWS |
+| Deployment | In progress on branch `deploy/k8s-basics` (not merged): plain manifests in `deploy/k8s/` for the Namespace, api Deployment and api Service, plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod runs but is not Ready until PostgreSQL is added. Then Helm, and later a short k3s trial on AWS |
 
 The implemented API endpoints are a foundation for the application. There are currently no grocery routes, database schema, web pages, or reminder worker. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
 
@@ -171,7 +171,7 @@ These are planned milestones, not completed features or promised dates. Mileston
 | Milestone | Planned work | Completion evidence |
 |---|---|---|
 | 1. Ship the API image (**done**) | Publish to Docker Hub after successful checks, only on `main`, tagged with the commit SHA | Pull the published image and verify `/health` (verified 2026-10-24, see journal Entry 6) |
-| 2. Kubernetes basics on Minikube (**in progress**) | Plain manifests: Namespace, api Deployment with probes and resource settings, ClusterIP Service, database Secret, PostgreSQL StatefulSet with persistent storage | api Pod Ready, `/health` reachable through the Service from inside the cluster, data kept after the database Pod is deleted |
+| 2. Kubernetes basics on Minikube (**in progress**) | Plain manifests: Namespace, api Deployment with probes and resource settings, ClusterIP Service, database Secret, PostgreSQL StatefulSet with persistent storage. Done so far: Namespace, Deployment, Service, Secret. Remaining: PostgreSQL StatefulSet | api Pod Ready, `/health` reachable through the Service from inside the cluster, data kept after the database Pod is deleted |
 | 3. Implement household tracking | PostgreSQL schema, item validation, add/list/status API routes, Flask HTML interface, integration tests | Add groceries, see date ordering, mark used/discarded, and verify retained records |
 | 4. Package and protect | Helm chart with Minikube and AWS values, Ingress with TLS and basic authentication, NetworkPolicies, OpenBao + External Secrets Operator + Reloader | Demo the application behind TLS and a login prompt, and verify recovery through failure drills |
 | 5. Add reminders | Expiry checker as a CronJob, date-type wording, three-day window, Mailpit tests, morning schedule | Inspect captured emails for due, past-date, and no-due-item cases |
