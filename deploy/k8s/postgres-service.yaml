@@ -1,0 +1,19 @@
+# Headless Service for PostgreSQL: gives the database Pod a stable DNS name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: freshtrack
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: freshtrack
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: freshtrack
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP

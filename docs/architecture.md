@@ -1,11 +1,12 @@
 # FreshTrack — Architecture
 
-Last updated: 2026-10-25
+Last updated: 2026-11-03
 
 **Status rule:** a part is marked **Built** only when it is merged to `main` and verified.
 Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE, SCAN and SHIP
 (section 9; BUILD to SHIP for the api image only), and the `main` branch ruleset.
 The api has only `/health` and `/ready` so far, so it is still Planned.
+In progress (branch `deploy/k8s-basics`, not merged): plain Kubernetes manifests on Minikube, see section 7.
 
 ---
 
@@ -94,13 +95,26 @@ The household email address is **not** stored in the database. It comes from con
 | Environment | Purpose | Email | Status |
 |---|---|---|---|
 | Laptop (WSL Ubuntu) | Write and test code | Mailpit | Planned |
-| Minikube (main lab, multi-node when useful) | Learn and practise Kubernetes, failure drills | Mailpit | Planned |
+| Minikube (main lab, multi-node when useful) | Learn and practise Kubernetes, failure drills | Mailpit | In progress: single-node profile `freshtrack` (Kubernetes 1.36, containerd, Calico) |
 | k3s on AWS EC2, ca-central-1 (about 1 week) | Household trial and demo | Amazon SES sandbox or Gmail App Password (to decide) | Planned |
 
 AWS infrastructure is defined in a separate repo, `terraform-aws-platform`.
 **Cost rule:** destroy AWS resources after demo days.
 
 ## 7. Kubernetes objects: where each one fits FreshTrack (planned)
+
+**Rehearsal status (2026-11-03):** applied and verified on Minikube from `deploy/k8s/` on branch
+`deploy/k8s-basics`. Not merged, so still **Planned** under the status rule.
+
+| Object | What exists on Minikube | Verified |
+|---|---|---|
+| Namespace | `freshtrack` | Entry 7 |
+| Deployment, ReplicaSet, Pod | api, 1 replica, digest-pinned image, startup/readiness/liveness probes, requests and limits, non-root | Rolling update finished; old ReplicaSets scaled to 0 (Entry 9) |
+| Service (ClusterIP) | `api`, port 80 → named port `http` | `/health` and `/ready` 200 through the Service from inside the cluster (Entry 9) |
+| Secret | `postgres-credentials`, created by hand from a file outside the repo | Key sizes only, values never shown (Entry 8) |
+| Service (headless) | `postgres`, `clusterIP: None`, port 5432 | EndpointSlice points at `postgres-0` (Entry 9) |
+| StatefulSet, PVC, PV, StorageClass | PostgreSQL 18.6, PVC `data-postgres-0` (1Gi, `standard` / minikube-hostpath) | Row kept after deleting `postgres-0` (Entry 9) |
+
 
 | Object | FreshTrack use |
 |---|---|

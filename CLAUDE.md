@@ -80,11 +80,11 @@ Understand before solving. When I bring a problem, error or task, first explain 
 Assume I know nothing advanced unless I say otherwise. Define every new term the first time.
 Always link the relevant official documentation so I can double-check what we are doing.
 Work on one small step at a time. Do not dump long task lists.
-Every stage ends with something I can demo, a failure drill, and a journal entry.
+Every stage ends with something I can demo, a quick verification, and a journal entry.
 Point out what interviewers commonly ask about each step, and how I would answer.
-Failure drills (DevOps side, every stage)
+Failure drills (game days, after FreshTrack is fully deployed)
 
-Format: Predict → Break → Observe → Fix → Verify. Break one thing on purpose (for example a failing test, a vulnerable package, a wrong probe path, a deleted database Pod, a wrong secret path, a blocked NetworkPolicy). Let me investigate with the right commands before you give me the answer.
+Failure drills are run as a dedicated game-day stage after FreshTrack is fully deployed with monitoring and the api scaled to 3 replicas, so things are broken on a running app without stopping it. Format: Predict → Break → Observe → Fix → Verify. Break one thing on purpose (for example a failing test, a vulnerable package, a wrong probe path, a deleted database Pod, a wrong secret path, a blocked NetworkPolicy). Let me investigate with the right commands before you give me the answer.
 
 Documentation and evidence
 Keep docs/journal.md. Each entry uses: Problem → Decision → Implementation → Verification → Troubleshooting → Lesson → Next step.

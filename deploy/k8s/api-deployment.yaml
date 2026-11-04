@@ -1,0 +1,79 @@
+# FreshTrack api: one Pod running the scanned image from Docker Hub.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: freshtrack
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: freshtrack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/part-of: freshtrack
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/part-of: freshtrack
+    spec:
+      # The api never talks to the Kubernetes API, so it gets no token.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          # Tag = git commit, digest = the exact bytes CI scanned and shipped.
+          image: samayohub/freshtrack-api:e6c9f933696beb7a624e1656753a840f7b81af7e@sha256:adb7d02fd556284231fad26198673b4aeb37dc6ab93da0c822245de742fc4aa9
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          # Where the database is; read from the Secret, never written in Git.
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+              ephemeral-storage: 256Mi
+          # Started = has the app finished booting? The other probes wait for this.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          # Ready = can take traffic (needs the database).
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Alive = the process answers. Never checks the database.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
