@@ -68,9 +68,11 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
           # Started = first-time setup finished and the server accepts TCP.
           startupProbe:
             exec:
