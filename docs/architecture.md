@@ -6,7 +6,7 @@ Last updated: 2026-11-03
 Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE, SCAN and SHIP
 (section 9; BUILD to SHIP for the api image only), and the `main` branch ruleset.
 The api has only `/health` and `/ready` so far, so it is still Planned.
-In progress (branch `deploy/k8s-basics`, not merged): plain Kubernetes manifests on Minikube, see section 7.
+Built on Minikube (PR #12): plain Kubernetes manifests for the Namespace, api and PostgreSQL, see section 7.
 
 ---
 
@@ -95,7 +95,7 @@ The household email address is **not** stored in the database. It comes from con
 | Environment | Purpose | Email | Status |
 |---|---|---|---|
 | Laptop (WSL Ubuntu) | Write and test code | Mailpit | Planned |
-| Minikube (main lab, multi-node when useful) | Learn and practise Kubernetes, failure drills | Mailpit | In progress: single-node profile `freshtrack` (Kubernetes 1.36, containerd, Calico) |
+| Minikube (main lab, multi-node when useful) | Learn and practise Kubernetes, failure drills | Mailpit | **Built** for the api and PostgreSQL (PR #12): single-node profile `freshtrack` (Kubernetes 1.36, containerd, Calico); Mailpit Planned |
 | k3s on AWS EC2, ca-central-1 (about 1 week) | Household trial and demo | Amazon SES sandbox or Gmail App Password (to decide) | Planned |
 
 AWS infrastructure is defined in a separate repo, `terraform-aws-platform`.
@@ -103,8 +103,9 @@ AWS infrastructure is defined in a separate repo, `terraform-aws-platform`.
 
 ## 7. Kubernetes objects: where each one fits FreshTrack (planned)
 
-**Rehearsal status (2026-11-03):** applied and verified on Minikube from `deploy/k8s/` on branch
-`deploy/k8s-basics`. Not merged, so still **Planned** under the status rule.
+**Rehearsal status (2026-11-03):** the objects below are **Built** on Minikube: merged to `main` in PR #12
+and verified (journal Entry 9). Every other row in the table after this one is still Planned.
+Both containers have CPU, memory and ephemeral-storage requests and limits.
 
 | Object | What exists on Minikube | Verified |
 |---|---|---|

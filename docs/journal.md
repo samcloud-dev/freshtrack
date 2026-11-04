@@ -670,7 +670,9 @@ automatically stopped broken or messy code from reaching `main`.
    (reason `Unknown`, exit code 255, `SandboxChanged`). The probe failed 2 of 15 allowed times, so it never restarted anything.
 5. *The terminal sat at a `>` prompt.* I typed into a heredoc (`<<'SQL'`) without the closing `SQL` line. `Ctrl+C` cancelled it (nothing was sent); I used `kubectl exec -it` and `psql` interactively instead.
 6. *Finding:* during the delete check the api logged one readiness failure as a **timeout** (`context deadline exceeded`), not a 503.
-   The api's database check has no connect timeout of its own, so the probe's 3 s gave up first. To fix in milestone 3 (app code): a short connect timeout and a test.
+   *(Corrected 2026-11-03.)* At first I wrote that the database check has no connect timeout. That was wrong: `app.py` already uses
+   `connect_timeout=2`. The probe's 3 s still ran out once, so the exact cause is not confirmed yet. Possible causes to test later:
+   the DNS lookup of `postgres` is not covered by `connect_timeout`, or libpq tried more than one address. To investigate in the game-day stage.
 7. *Minikube `hostpath` storage does not enforce size or `fsGroup`.* `df` inside the Pod showed the node disk (1007G), and the folder is `drwxrwxrwx root`.
    PostgreSQL then set its own data folder to `drwx------ postgres`. Cloud disks enforce the size.
 
@@ -686,6 +688,23 @@ automatically stopped broken or messy code from reaching `main`.
 
 **Next step**
 - Open one pull request for milestone 2 (`deploy/k8s-basics` → `main`). After CI passes and it is merged, mark the Kubernetes basics as Built.
-- Milestone 3: items table and routes in the api, including the readiness connect timeout. Drop the `proof` test table before the schema work.
+- Milestone 3: items table and routes in the api. Drop the `proof` test table before the schema work.
 - Optional: label the Secret with `app.kubernetes.io/part-of=freshtrack` and `app.kubernetes.io/name=postgres`.
 - Still owed: Entry 6 explain-back, Trivy 0.76.0 upgrade, confirm the Docker Hub token expiry date.
+
+**Addendum (2026-11-03): SonarCloud gate, ephemeral storage, merge**
+- *Problem.* The SonarCloud quality gate failed on PR #12: "Specify a storage request / storage limit for this container" on both the api and postgres containers.
+  We had set CPU and memory, but not **ephemeral storage** (the container's scratch disk: its writable layer and its logs).
+  Without a limit, one container could fill the node disk and get every Pod on that node evicted.
+- *Decision.* Starting values, to be measured in the operations stage: api request 64Mi, limit 256Mi; postgres request 128Mi, limit 512Mi.
+  The database files are on the PVC, which does not count as ephemeral storage.
+- *Troubleshooting.* My first edit added a second `resources:` block to the api container (YAML keeps only the last one, silently),
+  and pasted the postgres block at the end of the file, inside `volumeClaimTemplates`, where it replaced `storage: 1Gi`.
+  The YAML parser said both files were fine. The **server-side dry run** caught it:
+  `The StatefulSet "postgres" is invalid: spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', ...`
+  (`volumeClaimTemplates` cannot change after creation). Fixed by adding two lines inside each container's existing `resources:` block.
+- *Verification.* `kubectl apply --dry-run=server` → both `configured`; after apply both Pods `1/1`; `postgres-0` shows
+  `ephemeral-storage` 128Mi / 512Mi in its resources. Commit `b74965d`. SonarCloud then passed.
+- *Merge.* PR #12 squash-merged as `03ce114`. The file snapshot (tree) of `main` is identical to the branch tip.
+  `main` CI: `checks`, `SonarCloud Code Analysis` and `ship` all passed; Docker Hub tag `03ce114…` (same app code as `e6c9f93`).
+- *Lesson.* A YAML syntax check only proves the file parses. `kubectl diff` or `--dry-run=server` proves the cluster accepts it. Edit inside an existing block; do not paste a new one.
