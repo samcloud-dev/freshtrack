@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** API skeleton with container CI that publishes the image to Docker Hub. A Kubernetes rehearsal on Minikube has started on a feature branch (plain manifests, not yet merged). The household application is still being built; grocery tracking and email reminders are planned.
+**Current stage:** API skeleton with container CI that publishes the image to Docker Hub. A Kubernetes rehearsal on Minikube is running on a feature branch (plain manifests, not yet merged): the api is Ready and connected to PostgreSQL. The household application is still being built; grocery tracking and email reminders are planned.
 
 ## Contents
 
@@ -30,7 +30,7 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
 | Household features | Planned: grocery storage, active list, item status updates, and reminders |
-| Deployment | In progress on branch `deploy/k8s-basics` (not merged): plain manifests in `deploy/k8s/` for the Namespace, api Deployment and api Service, plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod runs but is not Ready until PostgreSQL is added. Then Helm, and later a short k3s trial on AWS |
+| Deployment | In progress on branch `deploy/k8s-basics` (not merged): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). Then Helm, and later a short k3s trial on AWS |
 
 The implemented API endpoints are a foundation for the application. There are currently no grocery routes, database schema, web pages, or reminder worker. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
 
@@ -107,7 +107,7 @@ This starts Flask's development server. The Docker image uses Gunicorn instead. 
 
 The API reads configuration from the process environment. It does not load `.env` files automatically. For Docker, pass an existing environment variable with `-e DATABASE_URL` before the image name. The database hostname must be reachable from inside the container; `localhost` there refers to the container itself.
 
-No PostgreSQL setup or migrations are supplied yet. Readiness currently opens a connection and runs `SELECT 1`; it does not check an application schema.
+On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`); no application schema or migrations are supplied yet. Readiness currently opens a connection and runs `SELECT 1`; it does not check an application schema.
 
 | Method | Path | Result |
 |---|---|---|
@@ -158,7 +158,7 @@ The [engineering journal](docs/journal.md) records a failure drill where an old 
 - Trivy scans the saved image through a read-only file mount without receiving the Docker socket.
 - The Docker Hub token (Read & Write, with an expiry date) is stored only in the GitHub environment `dockerhub`, which only the `main` branch can use. Feature branches and pull requests never receive it. Images are tagged only with the commit SHA, never `latest`.
 - Secrets belong in environment variables or a secret store; never commit credentials or bake them into an image.
-- In Kubernetes, the api is exposed only through a `ClusterIP` Service, so it cannot be reached from outside the cluster.
+- In Kubernetes, the api is exposed only through a `ClusterIP` Service and PostgreSQL only through a headless Service, so neither can be reached from outside the cluster. Both run as non-root users with all Linux capabilities dropped, and the official PostgreSQL image is pinned by digest.
 - The database credentials are a Kubernetes Secret created by hand from a file outside the repository; no Secret values are stored in Git. OpenBao with External Secrets Operator is planned to replace this manual step.
 - The API currently has no authentication. Before any public exposure, the deployment must provide TLS and basic authentication at the Ingress or Gateway.
 - The filesystem dependency scan currently covers runtime requirements; development dependency scanning, Git history secret scanning, and misconfiguration scanning are not implemented.
@@ -171,14 +171,14 @@ These are planned milestones, not completed features or promised dates. Mileston
 | Milestone | Planned work | Completion evidence |
 |---|---|---|
 | 1. Ship the API image (**done**) | Publish to Docker Hub after successful checks, only on `main`, tagged with the commit SHA | Pull the published image and verify `/health` (verified 2026-10-24, see journal Entry 6) |
-| 2. Kubernetes basics on Minikube (**in progress**) | Plain manifests: Namespace, api Deployment with probes and resource settings, ClusterIP Service, database Secret, PostgreSQL StatefulSet with persistent storage. Done so far: Namespace, Deployment, Service, Secret. Remaining: PostgreSQL StatefulSet | api Pod Ready, `/health` reachable through the Service from inside the cluster, data kept after the database Pod is deleted |
+| 2. Kubernetes basics on Minikube (**in progress**) | Plain manifests: Namespace, api Deployment with probes and resource settings, ClusterIP Service, database Secret, PostgreSQL StatefulSet with persistent storage. All applied and verified on Minikube (journal Entry 9); complete once merged to `main` | api Pod Ready, `/health` reachable through the Service from inside the cluster, data kept after the database Pod is deleted |
 | 3. Implement household tracking | PostgreSQL schema, item validation, add/list/status API routes, Flask HTML interface, integration tests | Add groceries, see date ordering, mark used/discarded, and verify retained records |
 | 4. Package and protect | Helm chart with Minikube and AWS values, Ingress with TLS and basic authentication, NetworkPolicies, OpenBao + External Secrets Operator + Reloader | Demo the application behind TLS and a login prompt, and verify recovery through failure drills |
 | 5. Add reminders | Expiry checker as a CronJob, date-type wording, three-day window, Mailpit tests, morning schedule | Inspect captured emails for due, past-date, and no-due-item cases |
 | 6. Add delivery and operations | Argo CD, metrics, logs, alerts, scheduled image rescanning, resource sizing | Demonstrate a Git-driven rollout and a failed-reminder alert |
 | 7. Run the household trial | Short k3s/AWS hosting window within a two-week household trial | Record reminder accuracy, ease of use, and real examples of food remembered; remove AWS resources after the trial |
 
-Outstanding learning work includes CHECK-stage failure drills for Ruff, pytest, Bandit, and Trivy secret scanning. Open decisions include the edge networking implementation, trial email provider, exact morning send time, and whether days with nothing due should produce an email. See [architecture decisions](docs/architecture.md#12-open-decisions).
+Failure drills (including the CHECK-stage drills for Ruff, pytest, Bandit, and Trivy secret scanning) are grouped into a game-day stage once FreshTrack is fully deployed with monitoring and the api runs 3 replicas. Open decisions include the edge networking implementation, trial email provider, exact morning send time, and whether days with nothing due should produce an email. See [architecture decisions](docs/architecture.md#12-open-decisions).
 
 ## Repository layout
 
@@ -197,7 +197,9 @@ freshtrack/
 ├── deploy/k8s/               # Plain Kubernetes manifests for the Minikube rehearsal (in progress)
 │   ├── namespace.yaml        # freshtrack Namespace
 │   ├── api-deployment.yaml   # api Deployment: digest-pinned image, probes, resources, security context
-│   └── api-service.yaml      # api ClusterIP Service (internal only)
+│   ├── api-service.yaml      # api ClusterIP Service (internal only)
+│   ├── postgres-service.yaml # PostgreSQL headless Service (stable DNS name)
+│   └── postgres-statefulset.yaml # PostgreSQL 18 StatefulSet with a 1Gi PVC
 ├── docs/
 │   ├── architecture.md       # Design, status, deployment plans, decisions
 │   └── journal.md            # Implementation evidence and lessons

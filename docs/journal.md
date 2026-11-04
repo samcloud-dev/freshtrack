@@ -602,3 +602,90 @@ automatically stopped broken or messy code from reaching `main`.
   Expected result: `/ready` → 200, both EndpointSlice addresses `ready=true`, the stuck rollout finishes, the same `curl` test succeeds.
 - Optional: label the Secret with `app.kubernetes.io/part-of=freshtrack` and `app.kubernetes.io/name=postgres` (not done yet).
 - Still owed: Entry 6 explain-back, CHECK-stage drills, Trivy 0.76.0 upgrade, confirm the Docker Hub token expiry date.
+
+## Entry 9 — 2026-11-03 — PostgreSQL StatefulSet, api connected, data survives a Pod deletion
+
+**Problem**
+- The api Pods stayed `0/1` (not Ready) since Entry 7: `/ready` returned 503 because there was no database and the api had no `DATABASE_URL`.
+- The rollout from Entry 7 was stuck with two ReplicaSets, one Pod each, neither Ready.
+- The database must keep its data when its Pod is replaced, and must have a stable address.
+- Before starting: Docker Desktop was off again, so the cluster was down. Restarted Docker Desktop and `minikube start -p freshtrack`.
+
+**Decision**
+- **PostgreSQL 18.6.** Checked the official [versioning policy](https://www.postgresql.org/support/versioning/) on 2026-11-03:
+  supported majors are 14–18; 14 reaches end of life on 2026-11-12; 19 is only a release candidate. 18 has support until November 2030.
+- **Official image pinned by digest:** `postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81`
+  (the same digest as `18.6`; covers amd64 and arm64; tag last rebuilt 2026-10-31 for OS updates).
+- **StatefulSet, not Deployment:** stable Pod name `postgres-0` and its own disk (PVC `data-postgres-0`) that is reattached when the Pod is replaced.
+- **Headless Service** `postgres` (`clusterIP: None`): DNS points straight at the Pod. Matches `postgres:5432` in the Secret's `DATABASE_URL`.
+- **Mount at `/var/lib/postgresql`:** the [image docs](https://hub.docker.com/_/postgres) say version 18+ changed the volume path
+  (data now in `/var/lib/postgresql/18/docker`). The old `/var/lib/postgresql/data` would have left the data off the PVC.
+- **Only the three keys the database needs** (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) via `secretKeyRef`, not `envFrom`,
+  so the database does not receive `DATABASE_URL`. The api gets only `DATABASE_URL`.
+- No `storageClassName`, so the cluster default is used (`standard` on Minikube, `local-path` on k3s): one file for both clusters.
+- `persistentVolumeClaimRetentionPolicy: Retain` written out (it is the default) so it is visible in reviews.
+- `terminationGracePeriodSeconds: 60` so PostgreSQL can shut down cleanly.
+- Probes: startup and readiness run `pg_isready -h 127.0.0.1` (TCP, so it fails during first-time setup); liveness only checks the TCP port,
+  so a busy database is not restarted.
+- `readOnlyRootFilesystem` left out for now (PostgreSQL writes to `/var/run/postgresql` and `/tmp`); revisit in Helm.
+- Replicas stay at 1 for now. Scaling the api to 3 waits for the Helm chart and the game-day stage.
+- Failure drills for every stage are moved to one game-day stage after FreshTrack is fully deployed with monitoring (CLAUDE.md updated).
+
+**Implementation**
+- `deploy/k8s/postgres-service.yaml`: headless Service `postgres`, port 5432 → named port `postgres`.
+- `deploy/k8s/postgres-statefulset.yaml`: 1 replica, `serviceName: postgres`, `runAsUser/runAsGroup/fsGroup 999`, `runAsNonRoot`,
+  seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped, no service account token,
+  requests 100m / 256Mi, limits 500m / 512Mi, `volumeClaimTemplates` `data` 1Gi `ReadWriteOnce`.
+- `deploy/k8s/api-deployment.yaml`: added `env` `DATABASE_URL` from Secret `postgres-credentials` with `secretKeyRef`.
+- I typed all three files and applied them myself. I applied them before the review step; the review afterwards found the YAML valid,
+  the live objects matching the files (`kubectl diff` empty), and only whitespace-only blank lines to tidy, which were removed.
+
+**Verification**
+- Service `postgres`: `CLUSTER-IP None`. EndpointSlice was empty (`<unset>`) until the database Pod existed, then `10.244.23.150:5432`.
+- PVC `data-postgres-0` `Bound`, 1Gi, `RWO`, `standard`; PV reclaim policy `Delete`.
+- `postgres-0` `1/1 Running`, 0 restarts. Inside the Pod: `uid=999(postgres)`; `show data_directory` → `/var/lib/postgresql/18/docker`; `PostgreSQL 18.6`.
+- api rollout: `deployment "api" successfully rolled out`. New ReplicaSet `api-5b47557d66` 1/1; both old ReplicaSets scaled to 0 (kept as history, 3 revisions).
+- From inside the cluster, through the Service `api.freshtrack.svc.cluster.local`: `/health` → `200 {"status":"ok"}`, `/ready` → `200 {"status":"ready"}`.
+- **Data survival check:**
+  - Wrote a test row (`proof` table) at 03:14:04 UTC.
+  - Before: `postgres-0` IP `10.244.23.150`, age 51m.
+  - `kubectl delete pod postgres-0`: `Terminating` → `Completed` (clean exit) → new `postgres-0` → `1/1` in about 5 s, new IP `10.244.23.152`.
+  - New Pod log: `Database directory appears to contain a database; Skipping initialization`, and `database system was shut down at 03:18:27` (clean shutdown, no crash recovery).
+  - `SELECT * FROM proof` returned the same row and timestamp. PVC unchanged: same volume `pvc-360eabc1-…`, age 55m (older than the new Pod).
+  - api stayed `1/1`, 0 restarts.
+
+**Failure drills**
+- *Prediction check (rollout).* Predicted 2 api Pods once settled. Wrong: it settles at 1 (`replicas: 1`); I saw 2 only because the Entry 7 rollout was stuck.
+  Right that old Pods go only after the new one is Ready (`maxSurge 1`, `maxUnavailable 0`).
+- *Prediction check (delete `postgres-0`).* Same name: right. Same IP: wrong (Pod IPs change; the name and DNS stay stable).
+  api not Ready: it stayed Ready, because the database was back in about 5 s and readiness needs 3 failures in a row (about 15 s).
+  Data survives: right; the reason is that the PVC is kept and reattached by Pod name.
+- Break drills are moved to the game-day stage after full deployment.
+
+**Troubleshooting**
+1. *`FailedScheduling … pod has unbound immediate PersistentVolumeClaims` on first create.* The PVC was still being provisioned; scheduled within a second. Normal.
+2. *One startup-probe failure on `postgres-0` (`127.0.0.1:5432 - no response`).* During first-time setup the image runs a temporary server without TCP. 1 of 30 allowed failures.
+3. *`received fast shutdown request` in the first log.* Not a crash: the temporary setup server stopping before the real one starts.
+4. *Two startup-probe failures on the api after the cluster restart, and `RESTARTS 3`.* The restarts were the node shutting down with Docker Desktop
+   (reason `Unknown`, exit code 255, `SandboxChanged`). The probe failed 2 of 15 allowed times, so it never restarted anything.
+5. *The terminal sat at a `>` prompt.* I typed into a heredoc (`<<'SQL'`) without the closing `SQL` line. `Ctrl+C` cancelled it (nothing was sent); I used `kubectl exec -it` and `psql` interactively instead.
+6. *Finding:* during the delete check the api logged one readiness failure as a **timeout** (`context deadline exceeded`), not a 503.
+   The api's database check has no connect timeout of its own, so the probe's 3 s gave up first. To fix in milestone 3 (app code): a short connect timeout and a test.
+7. *Minikube `hostpath` storage does not enforce size or `fsGroup`.* `df` inside the Pod showed the node disk (1007G), and the folder is `drwxrwxrwx root`.
+   PostgreSQL then set its own data folder to `drwx------ postgres`. Cloud disks enforce the size.
+
+**Lesson**
+- A StatefulSet gives a database a stable name and its own disk. The data lives in the PVC, outside the Pod, so deleting the Pod does not delete the data.
+- Pod IPs always change. Applications must use the Service DNS name, never an IP.
+- Readiness handles start-up order: the api does not need a "wait for the database" script; it is simply not Ready until the database answers.
+- `secretKeyRef` puts only a pointer in Git. Secret values in env are read at container start, so a changed Secret needs a restart (Reloader, later).
+- The official image's own docs matter: the PostgreSQL 18 mount path changed, and old guides would have silently lost data.
+- Review before apply: my YAML worked, but checking first is the habit that catches mistakes before they reach the cluster.
+
+*(Samson: reword these in your own words if you like.)*
+
+**Next step**
+- Open one pull request for milestone 2 (`deploy/k8s-basics` → `main`). After CI passes and it is merged, mark the Kubernetes basics as Built.
+- Milestone 3: items table and routes in the api, including the readiness connect timeout. Drop the `proof` test table before the schema work.
+- Optional: label the Secret with `app.kubernetes.io/part-of=freshtrack` and `app.kubernetes.io/name=postgres`.
+- Still owed: Entry 6 explain-back, Trivy 0.76.0 upgrade, confirm the Docker Hub token expiry date.
