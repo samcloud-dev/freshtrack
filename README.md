@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** API skeleton with container CI that publishes the image to Docker Hub. The Kubernetes basics are built on Minikube (plain manifests, merged in PR #12): the api is Ready and connected to PostgreSQL. The household application is still being built; grocery tracking and email reminders are planned.
+**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) has started: the api's grocery routes are written on a feature branch and not merged yet. The web pages and email reminders are planned.
 
 ## Contents
 
@@ -29,10 +29,11 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Container | Gunicorn server, digest-pinned Python base image, hash-locked dependencies, non-root UID `10001` |
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
-| Household features | Planned: grocery storage, active list, item status updates, and reminders |
+| Household features | In progress (feature branch, not merged): items table, add / list / mark used-or-discarded api routes with tests. Planned: web pages and the morning reminder |
+| Platform add-ons | Calico is installed with the Minikube profile and enforces NetworkPolicies. Planned: Ingress with TLS and basic auth, NetworkPolicies, OpenBao + External Secrets Operator + Reloader (milestone 4); Prometheus, Grafana, Loki with Grafana Alloy, Alertmanager and Argo CD (milestone 6) |
 | Deployment | Built on Minikube (PR #12): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). Then Helm, and later a short k3s trial on AWS |
 
-The implemented API endpoints are a foundation for the application. There are currently no grocery routes, database schema, web pages, or reminder worker. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
+On `main`, the api has only its probe endpoints. The grocery routes and database schema are in review on a feature branch; there are no web pages or reminder worker yet. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
 
 ## Version 1 plan
 
@@ -50,7 +51,7 @@ Account registration, multiple households, native mobile apps, barcode or receip
 
 ## Architecture
 
-The following is the **planned application architecture**. Only the API skeleton exists today.
+The following is the **planned application architecture**. Today the api (probe endpoints) and PostgreSQL run on Minikube; the other parts are planned. The [system map](docs/system-map.html) draws this, the delivery pipeline, the Kubernetes objects and the platform tools, each marked Built, In progress, or Planned.
 
 ```mermaid
 flowchart LR
@@ -64,7 +65,22 @@ flowchart LR
 
 Only the API will access PostgreSQL. The web app and expiry checker will call the API so validation and reminder rules stay in one place. Mailpit will capture development email without sending it to real recipients.
 
-The deployment plan uses Minikube as the main lab, Helm for packaging, and Argo CD for deployment from Git. A short AWS trial will use k3s on EC2 in `ca-central-1`, with infrastructure managed in the separate `terraform-aws-platform` repository. Plain Kubernetes manifests are being written first in `deploy/k8s/` as a Minikube rehearsal, to learn each object before packaging them with Helm. The Minikube profile matches the k3s trial: Kubernetes 1.36, containerd, and Calico so NetworkPolicies are enforced.
+The deployment plan uses Minikube as the main lab, Helm for packaging, and Argo CD for deployment from Git. A short AWS trial will use k3s on EC2 in `ca-central-1`, with infrastructure managed in the separate `terraform-aws-platform` repository. Plain Kubernetes manifests were written first in `deploy/k8s/` as a Minikube rehearsal (milestone 2, done), to learn each object before packaging them with Helm. The Minikube profile matches the k3s trial: Kubernetes 1.36, containerd, and Calico so NetworkPolicies are enforced.
+
+### Platform tools and where they run
+
+Each tool gets its own namespace, so the application and the tools that look after it stay separate.
+
+| Namespace | What runs there | Job | Status |
+|---|---|---|---|
+| `freshtrack` | web, api, PostgreSQL, expiry checker | The application | api and PostgreSQL built; others planned |
+| ingress controller's own | Ingress controller (Traefik proposed, confirmed against current docs first) | TLS and basic authentication at the edge | Planned (milestone 4) |
+| `openbao` | OpenBao | Stores the secrets | Planned (milestone 4) |
+| `external-secrets` | External Secrets Operator | Copies secrets from OpenBao into Kubernetes Secrets | Planned (milestone 4) |
+| `reloader` | Reloader | Restarts Pods when a Secret they use changes | Planned (milestone 4) |
+| `monitoring` | Prometheus, Alertmanager, Loki, Grafana; Grafana Alloy as a DaemonSet on every node | Metrics (Prometheus), logs (Loki, collected by Alloy), dashboards (Grafana), alerts (Alertmanager) | Planned (milestone 6) |
+| `argocd` | Argo CD | Deploys from Git (GitOps) | Planned (milestone 6) |
+| every node | Calico CNI | Pod networking; enforces NetworkPolicies | Installed with the Minikube profile |
 
 ## Run locally
 
@@ -145,7 +161,7 @@ Runtime dependencies are declared in `api/requirements.in`; development tools ar
 
 A failed step blocks subsequent normal steps. Container logs are requested even after failure. The full image report shows findings at all severities; the vulnerability gate uses `--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`.
 
-SonarCloud is documented as running separately through its GitHub app's Automatic Analysis. It is not a step in this workflow. Deployment is not implemented yet.
+SonarCloud is documented as running separately through its GitHub app's Automatic Analysis. It is not a step in this workflow. Deployment is not automated yet: manifests are applied by hand with `kubectl` after a server-side dry run. Argo CD is planned.
 
 The `main` branch is protected by a repository ruleset: changes need a pull request, the `checks` job and SonarCloud must pass, the branch must be up to date, and force pushes and deletion are blocked, with no bypass. The image that ships is the exact file that was scanned; it is not rebuilt.
 
@@ -172,10 +188,10 @@ These are planned milestones, not completed features or promised dates. Mileston
 |---|---|---|
 | 1. Ship the API image (**done**) | Publish to Docker Hub after successful checks, only on `main`, tagged with the commit SHA | Pull the published image and verify `/health` (verified 2026-10-24, see journal Entry 6) |
 | 2. Kubernetes basics on Minikube (**done**) | Plain manifests: Namespace, api Deployment with probes and resource settings, ClusterIP Service, database Secret, PostgreSQL StatefulSet with persistent storage. Each container also has ephemeral-storage requests and limits. Merged in PR #12 |  api Pod Ready, `/health` reachable through the Service from inside the cluster, data kept after the database Pod is deleted (verified 2026-11-03, see journal Entry 9) |
-| 3. Implement household tracking | PostgreSQL schema, item validation, add/list/status API routes, Flask HTML interface, integration tests | Add groceries, see date ordering, mark used/discarded, and verify retained records |
+| 3. Implement household tracking (**in progress**) | PostgreSQL schema, item validation, add/list/status API routes, Flask HTML interface, integration tests | Add groceries, see date ordering, mark used/discarded, and verify retained records |
 | 4. Package and protect | Helm chart with Minikube and AWS values, Ingress with TLS and basic authentication, NetworkPolicies, OpenBao + External Secrets Operator + Reloader | Demo the application behind TLS and a login prompt, and verify recovery through failure drills |
 | 5. Add reminders | Expiry checker as a CronJob, date-type wording, three-day window, Mailpit tests, morning schedule | Inspect captured emails for due, past-date, and no-due-item cases |
-| 6. Add delivery and operations | Argo CD, metrics, logs, alerts, scheduled image rescanning, resource sizing | Demonstrate a Git-driven rollout and a failed-reminder alert |
+| 6. Add delivery and operations | Argo CD, Prometheus metrics, Loki logs collected by Grafana Alloy, Grafana dashboards, Alertmanager alerts, scheduled image rescanning, resource sizing | Demonstrate a Git-driven rollout and a failed-reminder alert |
 | 7. Run the household trial | Short k3s/AWS hosting window within a two-week household trial | Record reminder accuracy, ease of use, and real examples of food remembered; remove AWS resources after the trial |
 
 Failure drills (including the CHECK-stage drills for Ruff, pytest, Bandit, and Trivy secret scanning) are grouped into a game-day stage once FreshTrack is fully deployed with monitoring and the api runs 3 replicas. Open decisions include the edge networking implementation, trial email provider, exact morning send time, and whether days with nothing due should produce an email. See [architecture decisions](docs/architecture.md#12-open-decisions).
