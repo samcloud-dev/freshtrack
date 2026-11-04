@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FreshTrack System Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with wide figures; cold-chain greens, status shown like date stickers. */
+:root {
+  --bg: #F2F6F4;
+  --surface: #FFFFFF;
+  --zone: #E8EFEC;
+  --ink: #142E28;
+  --muted: #586A64;
+  --line: #C3D1CC;
+  --accent: #1D6AA8;
+  --built: #2C7A4C;
+  --built-bg: #E1F0E6;
+  --prog: #9A620F;
+  --prog-bg: #FAEED6;
+  --planned: #6A7882;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1614; --surface: #15201D; --zone: #121C19; --ink: #E2ECE8; --muted: #93A59F;
+    --line: #2D3D38; --accent: #74B6EC; --built: #72CF98; --built-bg: #16301F;
+    --prog: #E7B65C; --prog-bg: #36290F; --planned: #8E9CA6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1614; --surface: #15201D; --zone: #121C19; --ink: #E2ECE8; --muted: #93A59F;
+  --line: #2D3D38; --accent: #74B6EC; --built: #72CF98; --built-bg: #16301F;
+  --prog: #E7B65C; --prog-bg: #36290F; --planned: #8E9CA6; color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.6;
+}
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 48px 72px;
+  display: grid;
+  gap: 56px;
+}
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); font-weight: 750; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.45rem, 3vw, 1.9rem); font-weight: 600; }
+h3 { font-size: 1.08rem; font-weight: 600; }
+p { margin: 0; }
+.prose { max-width: 68ch; display: grid; gap: 14px; }
+.eyebrow {
+  font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+section { display: grid; gap: 22px; }
+.head { display: grid; gap: 8px; max-width: 70ch; }
+.head p { color: var(--muted); }
+
+/* Hero */
+.hero { display: grid; gap: 18px; }
+.lede { font-size: 1.18rem; max-width: 60ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 0.9rem; color: var(--muted); }
+
+/* Status stickers, like a date label on a package */
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px; border: 1.5px solid; white-space: nowrap;
+}
+.tag.built { color: var(--built); background: var(--built-bg); border-color: var(--built); }
+.tag.prog { color: var(--prog); background: var(--prog-bg); border-color: var(--prog); }
+.tag.planned { color: var(--planned); border-style: dashed; border-color: var(--planned); background: transparent; }
+
+/* Problem strip */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.fact { border-top: 2px solid var(--ink); padding-top: 12px; display: grid; gap: 6px; }
+.fact strong { font-family: var(--display); font-size: 1.05rem; }
+.fact span { color: var(--muted); font-size: 0.95rem; }
+
+/* Figures */
+figure { margin: 0; display: grid; gap: 12px; }
+.fig-box {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px; overflow-x: auto;
+}
+.fig-box svg { display: block; width: 100%; min-width: 680px; height: auto; }
+figcaption { color: var(--muted); font-size: 0.93rem; max-width: 78ch; }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+svg text { font-family: var(--body); fill: var(--ink); }
+svg .t-name { font-size: 14px; font-weight: 600; }
+svg .t-sub { font-size: 11.5px; fill: var(--muted); }
+svg .t-edge { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+svg .t-zone { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; fill: var(--muted); }
+svg .t-tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; }
+svg .zone { fill: var(--zone); stroke: var(--line); stroke-dasharray: 3 4; }
+svg .n rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg .n.built rect { fill: var(--built-bg); stroke: var(--built); }
+svg .n.prog rect { fill: var(--prog-bg); stroke: var(--prog); }
+svg .n.planned rect { fill: var(--surface); stroke: var(--planned); stroke-dasharray: 6 4; }
+svg .t-tag.built { fill: var(--built); }
+svg .t-tag.prog { fill: var(--prog); }
+svg .t-tag.planned { fill: var(--planned); }
+svg .e { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+svg .e.planned { stroke-dasharray: 5 4; }
+svg .ah { fill: var(--muted); }
+
+/* Flows */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 20px 22px; display: grid; gap: 12px; align-content: start; min-width: 0;
+}
+.panel ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.panel li::marker { font-family: var(--mono); color: var(--muted); }
+.panel .note { font-size: 0.9rem; color: var(--muted); }
+
+/* Table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 0.95rem; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+
+/* Environments */
+.envs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.env { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--surface); display: grid; gap: 8px; align-content: start; }
+.env .row { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+.env p { color: var(--muted); font-size: 0.93rem; }
+
+/* Evidence */
+.evidence { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.ev { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 6px 24px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.ev strong { font-family: var(--display); font-weight: 600; }
+.ev p { color: var(--muted); }
+@media (max-width: 640px) { .ev { grid-template-columns: 1fr; } }
+
+/* Q&A */
+.qa { display: grid; gap: 14px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; gap: 8px; }
+.q h3 { color: var(--accent); }
+.pitch {
+  border-left: 4px solid var(--accent); padding: 4px 0 4px 18px;
+  font-size: 1.1rem; max-width: 70ch;
+}
+
+/* Roadmap */
+.road { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.road li { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.road .num { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.road .what { display: grid; gap: 2px; }
+.road .what span { color: var(--muted); font-size: 0.92rem; }
+
+footer { color: var(--muted); font-size: 0.88rem; border-top: 1px solid var(--line); padding-top: 18px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Portfolio project · DevOps / Platform / SRE</div>
+    <h1>FreshTrack</h1>
+    <p class="lede">A household food expiry tracker. You record what goes into the fridge, freezer or cupboard, the app lists what is closest to its label date, and a morning email names what to use up next.</p>
+    <div class="legend" aria-label="Status legend">
+      <span class="tag built">Built</span> merged to main and verified
+      <span class="tag prog">In progress</span> written, in review
+      <span class="tag planned">Planned</span> designed, not built yet
+    </div>
+  </header>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Why it exists</div>
+      <h2>Food gets thrown away because people forget it</h2>
+    </div>
+    <div class="facts">
+      <div class="fact"><strong>Out of sight</strong><span>Yogurt at the back of the fridge is found two days after its date.</span></div>
+      <div class="fact"><strong>Bought twice</strong><span>Nobody remembers there is already an open jar in the cupboard.</span></div>
+      <div class="fact"><strong>Two kinds of date</strong><span>"Best before" is about quality. "Expiration date" is a hard limit. Reminders word them differently.</span></div>
+      <div class="fact"><strong>No safety advice</strong><span>FreshTrack organises reminders. It never says whether food is safe to eat.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Figure 1 · The running system</div>
+      <h2>How a household uses it</h2>
+      <p>Everything inside the shaded box runs in one Kubernetes namespace, <code>freshtrack</code>.</p>
+    </div>
+    <figure>
+      <div class="fig-box">
+        <svg viewBox="0 0 960 440" role="img" aria-label="A household browser reaches the web app through an Ingress with TLS and basic authentication. The web app calls the api, which is the only part that reads and writes PostgreSQL. A morning CronJob asks the api for items due within three days and sends one email through a mail server to the household inbox.">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+            </marker>
+          </defs>
+          <rect class="zone" x="172" y="22" width="776" height="404" rx="14"/>
+          <text class="t-zone" x="192" y="48">KUBERNETES CLUSTER · NAMESPACE FRESHTRACK</text>
+
+          <!-- Row 1 -->
+          <g class="n"><rect x="15" y="150" width="120" height="68" rx="8"/>
+            <text class="t-name" x="75" y="178" text-anchor="middle">Household</text>
+            <text class="t-sub" x="75" y="198" text-anchor="middle">web browser</text></g>
+
+          <g class="n planned"><rect x="200" y="150" width="140" height="68" rx="8"/>
+            <text class="t-tag planned" x="200" y="140">PLANNED</text>
+            <text class="t-name" x="270" y="178" text-anchor="middle">Ingress</text>
+            <text class="t-sub" x="270" y="198" text-anchor="middle">TLS + basic auth</text></g>
+
+          <g class="n planned"><rect x="405" y="150" width="120" height="68" rx="8"/>
+            <text class="t-tag planned" x="405" y="140">PLANNED</text>
+            <text class="t-name" x="465" y="178" text-anchor="middle">web</text>
+            <text class="t-sub" x="465" y="198" text-anchor="middle">Flask + HTML</text></g>
+
+          <g class="n built"><rect x="590" y="150" width="120" height="68" rx="8"/>
+            <text class="t-tag built" x="590" y="140">BUILT · /health /ready</text>
+            <text class="t-name" x="650" y="178" text-anchor="middle">api</text>
+            <text class="t-sub" x="650" y="198" text-anchor="middle">Flask · JSON</text></g>
+
+          <g class="n built"><rect x="775" y="150" width="150" height="68" rx="8"/>
+            <text class="t-tag built" x="775" y="140">BUILT</text>
+            <text class="t-name" x="850" y="178" text-anchor="middle">PostgreSQL 18</text>
+            <text class="t-sub" x="850" y="198" text-anchor="middle">StatefulSet</text></g>
+
+          <g class="n built"><rect x="800" y="266" width="100" height="40" rx="8"/>
+            <text class="t-sub" x="850" y="291" text-anchor="middle">PVC · 1Gi disk</text></g>
+
+          <line class="e" x1="135" y1="184" x2="198" y2="184" marker-end="url(#a1)"/>
+          <text class="t-edge" x="167" y="174" text-anchor="middle">HTTPS</text>
+          <line class="e planned" x1="340" y1="184" x2="403" y2="184" marker-end="url(#a1)"/>
+          <text class="t-edge" x="372" y="174" text-anchor="middle">routes /</text>
+          <line class="e planned" x1="525" y1="184" x2="588" y2="184" marker-end="url(#a1)"/>
+          <text class="t-edge" x="557" y="174" text-anchor="middle">JSON</text>
+          <line class="e" x1="710" y1="184" x2="773" y2="184" marker-end="url(#a1)"/>
+          <text class="t-edge" x="742" y="174" text-anchor="middle">SQL</text>
+          <line class="e" x1="850" y1="218" x2="850" y2="264" marker-end="url(#a1)"/>
+          <text class="t-edge" x="858" y="246">mounts</text>
+
+          <!-- Row 2 -->
+          <g class="n"><rect x="15" y="330" width="120" height="68" rx="8"/>
+            <text class="t-name" x="75" y="358" text-anchor="middle">Household</text>
+            <text class="t-sub" x="75" y="378" text-anchor="middle">email inbox</text></g>
+
+          <g class="n planned"><rect x="200" y="330" width="140" height="68" rx="8"/>
+            <text class="t-tag planned" x="200" y="320">PLANNED</text>
+            <text class="t-name" x="270" y="358" text-anchor="middle">Mail server</text>
+            <text class="t-sub" x="270" y="378" text-anchor="middle">Mailpit dev · SES trial</text></g>
+
+          <g class="n planned"><rect x="405" y="330" width="180" height="68" rx="8"/>
+            <text class="t-tag planned" x="405" y="320">PLANNED</text>
+            <text class="t-name" x="495" y="358" text-anchor="middle">expiry-checker</text>
+            <text class="t-sub" x="495" y="378" text-anchor="middle">CronJob · mornings, Toronto</text></g>
+
+          <path class="e planned" d="M 495 330 L 495 270 L 650 270 L 650 220" marker-end="url(#a1)"/>
+          <text class="t-edge" x="572" y="262" text-anchor="middle">items due ≤ 3 days?</text>
+          <line class="e planned" x1="405" y1="364" x2="342" y2="364" marker-end="url(#a1)"/>
+          <text class="t-edge" x="373" y="354" text-anchor="middle">SMTP</text>
+          <line class="e planned" x1="200" y1="364" x2="137" y2="364" marker-end="url(#a1)"/>
+          <text class="t-edge" x="168" y="354" text-anchor="middle">email</text>
+        </svg>
+      </div>
+      <figcaption><b>Only the api touches the database.</b> The web pages and the morning checker both ask the api, so the rules (valid storage location, date type, the 3-day window) live in one place. Solid outlines are built; dashed outlines and arrows are planned. The household's own devices sit outside the cluster, and the Ingress is the only way in.</figcaption>
+    </figure>
+
+    <div class="two">
+      <div class="panel">
+        <h3>Flow A · Adding an item</h3>
+        <ol>
+          <li>Someone fills in the form on the web page: name, quantity, fridge / freezer / cupboard, label date, and best before or expiration date.</li>
+          <li>web sends it to the api as JSON (<code>POST /items</code>).</li>
+          <li>The api checks every field, then saves it. The table repeats the same rules, so bad data cannot get in another way.</li>
+          <li>The list comes back with the soonest date at the top (<code>GET /items</code>).</li>
+          <li>Marking an item used or discarded (<code>PATCH /items/&lt;id&gt;</code>) removes it from the list but keeps the row for the trial data.</li>
+        </ol>
+        <p class="note"><span class="tag prog">In progress</span> These three api routes are written and tested, waiting for review. The web pages come next.</p>
+      </div>
+      <div class="panel">
+        <h3>Flow B · The morning reminder</h3>
+        <ol>
+          <li>A Kubernetes CronJob starts the expiry-checker each morning, Toronto time.</li>
+          <li>It asks the api for active items within 3 days of their date, or already past it.</li>
+          <li>It builds one email, with "Best before" and "Expiration date" items worded differently.</li>
+          <li>It sends the email to the one household address, which is kept in a Secret, not in the database.</li>
+          <li>It exits. Success or failure shows in the Job status and logs, which is where an alert will look.</li>
+        </ol>
+        <p class="note"><span class="tag planned">Planned</span> Milestone 5. Mailpit catches every email in testing, so no real email is sent by accident.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Figure 2 · Delivery</div>
+      <h2>How a code change reaches the cluster</h2>
+      <p>Every stage is a gate. If one fails, nothing after it runs.</p>
+    </div>
+    <figure>
+      <div class="fig-box">
+        <svg viewBox="0 0 960 320" role="img" aria-label="A git push runs GitHub Actions: Check with Ruff, pytest, Bandit and Trivy, then Build an image tagged with the git SHA, Prove it starts, Scan it with Trivy, and on main only Ship it to Docker Hub. SonarCloud runs alongside as a pull request gate. The cluster pulls the image from Docker Hub. Argo CD syncing from Git is planned; today manifests are applied by hand.">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+            </marker>
+          </defs>
+          <text class="t-zone" x="171" y="20">GITHUB ACTIONS · ci.yml</text>
+
+          <g class="n"><rect x="15" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="80" y="56" text-anchor="middle">git push</text>
+            <text class="t-sub" x="80" y="76" text-anchor="middle">any branch</text>
+            <text class="t-sub" x="80" y="92" text-anchor="middle">or pull request</text></g>
+          <g class="n built"><rect x="171" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="236" y="56" text-anchor="middle">Check</text>
+            <text class="t-sub" x="236" y="76" text-anchor="middle">Ruff · pytest</text>
+            <text class="t-sub" x="236" y="92" text-anchor="middle">Bandit · Trivy fs</text></g>
+          <g class="n built"><rect x="327" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="392" y="56" text-anchor="middle">Build</text>
+            <text class="t-sub" x="392" y="76" text-anchor="middle">image tagged</text>
+            <text class="t-sub" x="392" y="92" text-anchor="middle">with the git SHA</text></g>
+          <g class="n built"><rect x="483" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="548" y="56" text-anchor="middle">Prove</text>
+            <text class="t-sub" x="548" y="76" text-anchor="middle">start it and</text>
+            <text class="t-sub" x="548" y="92" text-anchor="middle">call /health</text></g>
+          <g class="n built"><rect x="639" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="704" y="56" text-anchor="middle">Scan</text>
+            <text class="t-sub" x="704" y="76" text-anchor="middle">Trivy image gate</text>
+            <text class="t-sub" x="704" y="92" text-anchor="middle">fixable HIGH/CRIT</text></g>
+          <g class="n built"><rect x="795" y="30" width="130" height="78" rx="8"/>
+            <text class="t-name" x="860" y="56" text-anchor="middle">Ship</text>
+            <text class="t-sub" x="860" y="76" text-anchor="middle">main only</text>
+            <text class="t-sub" x="860" y="92" text-anchor="middle">same scanned file</text></g>
+
+          <line class="e" x1="145" y1="69" x2="169" y2="69" marker-end="url(#a2)"/>
+          <line class="e" x1="301" y1="69" x2="325" y2="69" marker-end="url(#a2)"/>
+          <line class="e" x1="457" y1="69" x2="481" y2="69" marker-end="url(#a2)"/>
+          <line class="e" x1="613" y1="69" x2="637" y2="69" marker-end="url(#a2)"/>
+          <line class="e" x1="769" y1="69" x2="793" y2="69" marker-end="url(#a2)"/>
+
+          <g class="n built"><rect x="171" y="128" width="130" height="46" rx="8"/>
+            <text class="t-name" x="236" y="148" text-anchor="middle">SonarCloud</text>
+            <text class="t-sub" x="236" y="165" text-anchor="middle">PR quality gate</text></g>
+          <line class="e" x1="236" y1="108" x2="236" y2="126" stroke-dasharray="2 3"/>
+
+          <!-- Row 2 -->
+          <g class="n built"><rect x="15" y="220" width="140" height="72" rx="8"/>
+            <text class="t-name" x="85" y="248" text-anchor="middle">GitHub main</text>
+            <text class="t-sub" x="85" y="268" text-anchor="middle">protected branch</text></g>
+          <g class="n planned"><rect x="215" y="220" width="140" height="72" rx="8"/>
+            <text class="t-tag planned" x="215" y="210">PLANNED</text>
+            <text class="t-name" x="285" y="248" text-anchor="middle">Argo CD</text>
+            <text class="t-sub" x="285" y="268" text-anchor="middle">GitOps + Helm</text></g>
+          <g class="n built"><rect x="420" y="220" width="300" height="72" rx="8"/>
+            <text class="t-tag built" x="420" y="210">BUILT ON MINIKUBE</text>
+            <text class="t-name" x="570" y="245" text-anchor="middle">Kubernetes cluster</text>
+            <text class="t-sub" x="570" y="264" text-anchor="middle">Minikube lab now · k3s on AWS for the trial</text>
+            <text class="t-sub" x="570" y="280" text-anchor="middle">today: kubectl apply, reviewed with a dry run</text></g>
+          <g class="n built"><rect x="795" y="220" width="130" height="72" rx="8"/>
+            <text class="t-name" x="860" y="248" text-anchor="middle">Docker Hub</text>
+            <text class="t-sub" x="860" y="268" text-anchor="middle">freshtrack-api</text></g>
+
+          <line class="e" x1="80" y1="108" x2="80" y2="218" marker-end="url(#a2)"/>
+          <text class="t-edge" x="88" y="168">merged PR</text>
+          <line class="e" x1="860" y1="108" x2="860" y2="218" marker-end="url(#a2)"/>
+          <text class="t-edge" x="868" y="168">push :git-SHA</text>
+          <line class="e planned" x1="155" y1="256" x2="213" y2="256" marker-end="url(#a2)"/>
+          <text class="t-edge" x="184" y="246" text-anchor="middle">watches</text>
+          <line class="e planned" x1="355" y1="256" x2="418" y2="256" marker-end="url(#a2)"/>
+          <text class="t-edge" x="387" y="246" text-anchor="middle">syncs</text>
+          <line class="e" x1="795" y1="256" x2="722" y2="256" marker-end="url(#a2)"/>
+          <text class="t-edge" x="758" y="246" text-anchor="middle">pull digest</text>
+        </svg>
+      </div>
+      <figcaption><b>The image that ships is the exact file that was scanned.</b> It is passed from the scan job to the ship job, not rebuilt. Tags are the git commit SHA, never <code>latest</code>, so every image traces back to one commit. The Docker Hub token is only available to the <code>main</code> branch.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Figure 3 · Inside Kubernetes today</div>
+      <h2>What is running on Minikube</h2>
+      <p>All of these objects are built and verified (PR #12). The api can reach the database, and the data survives the database Pod being deleted.</p>
+    </div>
+    <figure>
+      <div class="fig-box">
+        <svg viewBox="0 0 940 430" role="img" aria-label="The api Service selects the api Pod, created by a Deployment and ReplicaSet. The api Pod connects to the headless postgres Service, which resolves to Pod postgres-0 from a StatefulSet. postgres-0 mounts PVC data-postgres-0, bound to a PersistentVolume from the standard StorageClass. A Secret supplies DATABASE_URL to the api and three POSTGRES keys to the database.">
+          <defs>
+            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+            </marker>
+          </defs>
+
+          <g class="n built"><rect x="340" y="20" width="240" height="60" rx="8"/>
+            <text class="t-name" x="460" y="45" text-anchor="middle">Secret postgres-credentials</text>
+            <text class="t-sub" x="460" y="64" text-anchor="middle">made by hand · values never in Git</text></g>
+
+          <g class="n built"><rect x="20" y="140" width="240" height="84" rx="8"/>
+            <text class="t-name" x="140" y="172" text-anchor="middle">Service api</text>
+            <text class="t-sub" x="140" y="192" text-anchor="middle">ClusterIP · port 80 → http</text>
+            <text class="t-sub" x="140" y="208" text-anchor="middle">inside the cluster only</text></g>
+          <g class="n built"><rect x="340" y="140" width="240" height="84" rx="8"/>
+            <text class="t-name" x="460" y="168" text-anchor="middle">Pod api</text>
+            <text class="t-sub" x="460" y="188" text-anchor="middle">Deployment → ReplicaSet</text>
+            <text class="t-sub" x="460" y="204" text-anchor="middle">startup · readiness · liveness</text></g>
+          <g class="n built"><rect x="660" y="140" width="240" height="84" rx="8"/>
+            <text class="t-name" x="780" y="172" text-anchor="middle">Service postgres</text>
+            <text class="t-sub" x="780" y="192" text-anchor="middle">headless · clusterIP None</text>
+            <text class="t-sub" x="780" y="208" text-anchor="middle">port 5432</text></g>
+
+          <g class="n built"><rect x="660" y="320" width="240" height="84" rx="8"/>
+            <text class="t-name" x="780" y="348" text-anchor="middle">Pod postgres-0</text>
+            <text class="t-sub" x="780" y="368" text-anchor="middle">StatefulSet · PostgreSQL 18.6</text>
+            <text class="t-sub" x="780" y="384" text-anchor="middle">non-root · image pinned by digest</text></g>
+          <g class="n built"><rect x="340" y="320" width="240" height="84" rx="8"/>
+            <text class="t-name" x="460" y="352" text-anchor="middle">PVC data-postgres-0</text>
+            <text class="t-sub" x="460" y="372" text-anchor="middle">1Gi · ReadWriteOnce</text>
+            <text class="t-sub" x="460" y="388" text-anchor="middle">kept when the Pod is deleted</text></g>
+          <g class="n built"><rect x="20" y="320" width="240" height="84" rx="8"/>
+            <text class="t-name" x="140" y="352" text-anchor="middle">PersistentVolume</text>
+            <text class="t-sub" x="140" y="372" text-anchor="middle">StorageClass standard</text>
+            <text class="t-sub" x="140" y="388" text-anchor="middle">k3s uses local-path</text></g>
+
+          <line class="e" x1="460" y1="80" x2="460" y2="138" marker-end="url(#a3)"/>
+          <text class="t-edge" x="470" y="114">DATABASE_URL</text>
+          <path class="e" d="M 580 50 L 922 50 L 922 362 L 902 362" marker-end="url(#a3)"/>
+          <text class="t-edge" x="750" y="42" text-anchor="middle">3 POSTGRES_* keys</text>
+
+          <line class="e" x1="260" y1="182" x2="338" y2="182" marker-end="url(#a3)"/>
+          <text class="t-edge" x="299" y="172" text-anchor="middle">selects</text>
+          <line class="e" x1="580" y1="182" x2="658" y2="182" marker-end="url(#a3)"/>
+          <text class="t-edge" x="619" y="172" text-anchor="middle">SQL</text>
+          <line class="e" x1="780" y1="224" x2="780" y2="318" marker-end="url(#a3)"/>
+          <text class="t-edge" x="790" y="276">DNS → Pod IP</text>
+          <line class="e" x1="660" y1="362" x2="582" y2="362" marker-end="url(#a3)"/>
+          <text class="t-edge" x="621" y="352" text-anchor="middle">mounts</text>
+          <line class="e" x1="340" y1="362" x2="262" y2="362" marker-end="url(#a3)"/>
+          <text class="t-edge" x="301" y="352" text-anchor="middle">bound</text>
+        </svg>
+      </div>
+      <figcaption><b>The data lives in the PVC, outside the Pod.</b> When <code>postgres-0</code> is deleted, the StatefulSet recreates a Pod with the same name. It gets a new IP, but reattaches the same PVC, so the data is still there. The api always connects to the name <code>postgres</code>, never to an IP.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Figure 4 · The platform around the app</div>
+      <h2>Secrets, monitoring and networking</h2>
+      <p>Each shaded box is its own namespace, like separate rooms in one building. The app stays in <code>freshtrack</code>; the tools that look after it live next door.</p>
+    </div>
+    <figure>
+      <div class="fig-box">
+        <svg viewBox="0 0 960 520" role="img" aria-label="Namespaces in the cluster. An Ingress controller routes to web in the freshtrack namespace. OpenBao holds secrets, External Secrets Operator reads them and creates the Kubernetes Secret used by the api, and Reloader restarts the api when it changes. Argo CD syncs the Helm chart. Prometheus scrapes api metrics and sends alerts to Alertmanager; Grafana Alloy runs on every node and ships logs to Loki; Grafana shows both. Calico provides Pod networking on every node and enforces NetworkPolicies.">
+          <defs>
+            <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+            </marker>
+          </defs>
+
+          <!-- Namespaces, top row -->
+          <rect class="zone" x="15" y="44" width="165" height="230" rx="12"/>
+          <text class="t-zone" x="29" y="66">ingress</text>
+          <rect class="zone" x="200" y="44" width="420" height="230" rx="12"/>
+          <text class="t-zone" x="214" y="66">freshtrack</text>
+          <rect class="zone" x="640" y="44" width="305" height="230" rx="12"/>
+          <text class="t-zone" x="654" y="66">monitoring</text>
+
+          <!-- Namespaces, bottom row -->
+          <rect class="zone" x="15" y="304" width="165" height="116" rx="12"/>
+          <text class="t-zone" x="29" y="326">argocd</text>
+          <rect class="zone" x="200" y="304" width="130" height="116" rx="12"/>
+          <text class="t-zone" x="212" y="326">openbao</text>
+          <rect class="zone" x="345" y="304" width="150" height="116" rx="12"/>
+          <text class="t-zone" x="357" y="326">external-secrets</text>
+          <rect class="zone" x="510" y="304" width="110" height="116" rx="12"/>
+          <text class="t-zone" x="520" y="326">reloader</text>
+          <rect class="zone" x="640" y="304" width="305" height="116" rx="12"/>
+          <text class="t-zone" x="654" y="326">monitoring · every node</text>
+
+          <!-- ingress -->
+          <g class="n planned"><rect x="30" y="84" width="135" height="56" rx="8"/>
+            <text class="t-name" x="97" y="108" text-anchor="middle">Ingress</text>
+            <text class="t-sub" x="97" y="126" text-anchor="middle">TLS + basic auth</text></g>
+
+          <!-- freshtrack -->
+          <g class="n planned"><rect x="218" y="84" width="110" height="56" rx="8"/>
+            <text class="t-name" x="273" y="108" text-anchor="middle">web</text>
+            <text class="t-sub" x="273" y="126" text-anchor="middle">pages</text></g>
+          <g class="n built"><rect x="358" y="84" width="110" height="56" rx="8"/>
+            <text class="t-name" x="413" y="108" text-anchor="middle">api</text>
+            <text class="t-sub" x="413" y="126" text-anchor="middle">rules + data</text></g>
+          <g class="n built"><rect x="498" y="84" width="108" height="56" rx="8"/>
+            <text class="t-name" x="552" y="108" text-anchor="middle">PostgreSQL</text>
+            <text class="t-sub" x="552" y="126" text-anchor="middle">StatefulSet</text></g>
+          <g class="n planned"><rect x="218" y="184" width="110" height="56" rx="8"/>
+            <text class="t-name" x="273" y="208" text-anchor="middle">checker</text>
+            <text class="t-sub" x="273" y="226" text-anchor="middle">CronJob</text></g>
+          <g class="n built"><rect x="358" y="184" width="110" height="56" rx="8"/>
+            <text class="t-name" x="413" y="208" text-anchor="middle">Secret</text>
+            <text class="t-sub" x="413" y="226" text-anchor="middle">DB credentials</text></g>
+          <g class="n planned"><rect x="498" y="184" width="108" height="56" rx="8"/>
+            <text class="t-name" x="552" y="208" text-anchor="middle">NetworkPolicy</text>
+            <text class="t-sub" x="552" y="226" text-anchor="middle">allow-list</text></g>
+
+          <!-- monitoring -->
+          <g class="n planned"><rect x="655" y="84" width="115" height="56" rx="8"/>
+            <text class="t-name" x="712" y="108" text-anchor="middle">Prometheus</text>
+            <text class="t-sub" x="712" y="126" text-anchor="middle">metrics</text></g>
+          <g class="n planned"><rect x="815" y="84" width="115" height="56" rx="8"/>
+            <text class="t-name" x="872" y="108" text-anchor="middle">Grafana</text>
+            <text class="t-sub" x="872" y="126" text-anchor="middle">dashboards</text></g>
+          <g class="n planned"><rect x="655" y="184" width="115" height="56" rx="8"/>
+            <text class="t-name" x="712" y="208" text-anchor="middle">Alertmanager</text>
+            <text class="t-sub" x="712" y="226" text-anchor="middle">sends alerts</text></g>
+          <g class="n planned"><rect x="815" y="184" width="115" height="56" rx="8"/>
+            <text class="t-name" x="872" y="208" text-anchor="middle">Loki</text>
+            <text class="t-sub" x="872" y="226" text-anchor="middle">logs</text></g>
+
+          <!-- bottom row tools -->
+          <g class="n planned"><rect x="30" y="340" width="135" height="56" rx="8"/>
+            <text class="t-name" x="97" y="364" text-anchor="middle">Argo CD</text>
+            <text class="t-sub" x="97" y="382" text-anchor="middle">syncs from Git</text></g>
+          <g class="n planned"><rect x="212" y="340" width="106" height="56" rx="8"/>
+            <text class="t-name" x="265" y="364" text-anchor="middle">OpenBao</text>
+            <text class="t-sub" x="265" y="382" text-anchor="middle">secrets safe</text></g>
+          <g class="n planned"><rect x="357" y="340" width="126" height="56" rx="8"/>
+            <text class="t-name" x="420" y="364" text-anchor="middle">ESO</text>
+            <text class="t-sub" x="420" y="382" text-anchor="middle">copies secrets in</text></g>
+          <g class="n planned"><rect x="520" y="340" width="90" height="56" rx="8"/>
+            <text class="t-name" x="565" y="364" text-anchor="middle">Reloader</text>
+            <text class="t-sub" x="565" y="382" text-anchor="middle">restarts Pods</text></g>
+          <g class="n planned"><rect x="655" y="340" width="275" height="56" rx="8"/>
+            <text class="t-name" x="792" y="364" text-anchor="middle">Grafana Alloy · DaemonSet</text>
+            <text class="t-sub" x="792" y="382" text-anchor="middle">one Pod per node, reads container logs</text></g>
+
+          <!-- Calico under everything -->
+          <g class="n built"><rect x="15" y="446" width="930" height="56" rx="8"/>
+            <text class="t-tag built" x="15" y="438">BUILT · INSTALLED WITH THE MINIKUBE PROFILE</text>
+            <text class="t-name" x="480" y="470" text-anchor="middle">Calico CNI</text>
+            <text class="t-sub" x="480" y="488" text-anchor="middle">Pod networking on every node, and the part that actually enforces NetworkPolicies</text></g>
+
+          <!-- request path -->
+          <line class="e planned" x1="165" y1="112" x2="216" y2="112" marker-end="url(#a4)"/>
+          <line class="e planned" x1="328" y1="112" x2="356" y2="112" marker-end="url(#a4)"/>
+          <line class="e" x1="468" y1="112" x2="496" y2="112" marker-end="url(#a4)"/>
+          <line class="e" x1="413" y1="184" x2="413" y2="142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="420" y="166">env</text>
+
+          <!-- secrets flow -->
+          <line class="e planned" x1="318" y1="368" x2="355" y2="368" marker-end="url(#a4)"/>
+          <text class="t-edge" x="336" y="358" text-anchor="middle">reads</text>
+          <line class="e planned" x1="420" y1="340" x2="420" y2="242" marker-end="url(#a4)"/>
+          <text class="t-edge" x="428" y="296">creates</text>
+          <path class="e planned" d="M 565 340 L 565 290 L 483 290 L 483 162 L 455 162 L 455 142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="524" y="285" text-anchor="middle">restarts</text>
+
+          <!-- GitOps -->
+          <path class="e planned" d="M 97 340 L 97 290 L 273 290 L 273 276" marker-end="url(#a4)"/>
+          <text class="t-edge" x="185" y="286" text-anchor="middle">syncs Helm chart</text>
+
+          <!-- monitoring flows -->
+          <path class="e planned" d="M 712 84 L 712 24 L 413 24 L 413 82" marker-end="url(#a4)"/>
+          <text class="t-edge" x="562" y="17" text-anchor="middle">scrapes /metrics</text>
+          <line class="e planned" x1="770" y1="112" x2="813" y2="112" marker-end="url(#a4)"/>
+          <line class="e planned" x1="712" y1="140" x2="712" y2="182" marker-end="url(#a4)"/>
+          <text class="t-edge" x="720" y="165">alerts</text>
+          <line class="e planned" x1="872" y1="184" x2="872" y2="142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="880" y="165">logs</text>
+          <line class="e planned" x1="872" y1="340" x2="872" y2="242" marker-end="url(#a4)"/>
+          <text class="t-edge" x="880" y="296">ships logs</text>
+        </svg>
+      </div>
+      <figcaption><b>The secret never lives in Git or in the image.</b> OpenBao keeps it, External Secrets Operator copies it into a normal Kubernetes Secret, and Reloader restarts the api when that Secret changes. The Pods still read it the same way they do today. On the monitoring side, <b>Prometheus collects numbers</b> (CPU, memory, requests, errors) and <b>Loki collects logs</b> (text events), both shown in Grafana. Dashed means planned; the Ingress controller is proposed as Traefik and will be confirmed against current docs first.</figcaption>
+    </figure>
+
+    <div class="two">
+      <div class="panel">
+        <h3>Secrets flow</h3>
+        <ol>
+          <li>The database password is stored once, in OpenBao.</li>
+          <li>External Secrets Operator reads it with its own narrow permission.</li>
+          <li>It creates the Kubernetes Secret <code>postgres-credentials</code>, replacing today's manual step.</li>
+          <li>When the password changes, Reloader restarts the api and database Pods so they read the new value.</li>
+        </ol>
+        <p class="note"><span class="tag planned">Planned</span> Milestone 4, after Helm. OpenBao gets a small PVC so its data survives restarts.</p>
+      </div>
+      <div class="panel">
+        <h3>Observability flow</h3>
+        <ol>
+          <li>Prometheus scrapes numbers from the api and the cluster every few seconds.</li>
+          <li>Grafana Alloy runs one Pod on every node (a DaemonSet) and ships container logs to Loki.</li>
+          <li>Grafana shows metrics and logs side by side on one dashboard.</li>
+          <li>Alertmanager sends an alert when a rule fires, for example "the morning reminder did not run".</li>
+        </ol>
+        <p class="note"><span class="tag planned">Planned</span> Milestone 6. This is what lets game days start from an alert instead of a guess.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Security</div>
+      <h2>Protection in layers</h2>
+      <p>Version 1 has no user accounts, but a grocery list is still personal. Each layer covers a different way in.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>What it does</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Edge</td><td>TLS plus basic authentication at the Ingress, required before FreshTrack is ever reachable from the internet</td><td><span class="tag planned">Planned</span></td></tr>
+          <tr><td>Network</td><td>Services are ClusterIP or headless, so nothing is reachable from outside the cluster. NetworkPolicies will allow only web→api, checker→api and api→database.</td><td><span class="tag built">Built</span> <span class="tag planned">Policies planned</span></td></tr>
+          <tr><td>Containers</td><td>Non-root users, all Linux capabilities dropped, no privilege escalation, seccomp on, no service account token, CPU / memory / disk limits</td><td><span class="tag built">Built</span></td></tr>
+          <tr><td>Images</td><td>Base images pinned by digest, hash-locked Python packages, Trivy gate on fixable HIGH and CRITICAL findings</td><td><span class="tag built">Built</span></td></tr>
+          <tr><td>Secrets</td><td>Kubernetes Secret created by hand from a file outside the repo. OpenBao + External Secrets Operator + Reloader will replace the manual step.</td><td><span class="tag built">Manual</span> <span class="tag planned">OpenBao planned</span></td></tr>
+          <tr><td>Supply chain</td><td>GitHub Actions pinned to commit SHAs, read-only workflow token, protected <code>main</code> branch with required checks</td><td><span class="tag built">Built</span></td></tr>
+          <tr><td>Application</td><td>Every input validated in the api and again by database constraints. SQL uses parameters only. Errors never return connection details.</td><td><span class="tag prog">In progress</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Environments</div>
+      <h2>Where it runs</h2>
+    </div>
+    <div class="envs">
+      <div class="env"><div class="row"><h3>Laptop</h3><span class="tag built">Built</span></div><p>WSL Ubuntu. Write and test code, run the api in Docker.</p></div>
+      <div class="env"><div class="row"><h3>Minikube</h3><span class="tag built">Built</span></div><p>The main lab. Kubernetes 1.36, containerd and Calico, matching the cloud cluster so NetworkPolicies behave the same.</p></div>
+      <div class="env"><div class="row"><h3>k3s on AWS</h3><span class="tag planned">Planned</span></div><p>EC2 in ca-central-1 for about a week during the household trial. Built with Terraform and Ansible, then destroyed to control cost.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Evidence</div>
+      <h2>Things that actually happened</h2>
+      <p>Each one is recorded in the engineering journal with the commands and output.</p>
+    </div>
+    <div class="evidence">
+      <div class="ev"><strong>Vulnerable image blocked</strong><p>An old base image built and passed its health check, but failed the Trivy image gate, so it never reached Docker Hub.</p></div>
+      <div class="ev"><strong>Branch protection tested</strong><p>A direct push to <code>main</code> was rejected (GH013). Changes go through a pull request with CI and SonarCloud passing.</p></div>
+      <div class="ev"><strong>Data survived a Pod deletion</strong><p>A test row was written, <code>postgres-0</code> was deleted, a new Pod came back in about 5 seconds with a new IP, and the row was still there.</p></div>
+      <div class="ev"><strong>Bad change caught before apply</strong><p>A YAML edit landed inside the StatefulSet's storage template. The syntax check passed, but a server-side dry run refused it as an immutable field.</p></div>
+      <div class="ev"><strong>Quality gate finding fixed</strong><p>SonarCloud flagged containers with no ephemeral-storage requests or limits. They were added, so one container cannot fill the node's disk.</p></div>
+      <div class="ev"><strong>Stuck rollout explained</strong><p>A rolling update paused because the new Pod could never become Ready without a database. Once PostgreSQL existed, the rollout finished on its own.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">For the interview</div>
+      <h2>How to explain it</h2>
+    </div>
+    <p class="pitch">"FreshTrack is a food expiry tracker I built for my own household. It is three small Python services and PostgreSQL on Kubernetes. Every change goes through a CI pipeline that tests the code, scans the image and ships only what passed, and I verify each piece in the cluster before I call it built."</p>
+    <div class="qa">
+      <div class="q"><h3>Why is the database a StatefulSet and the api a Deployment?</h3><p>The api Pods are interchangeable, like line cooks. The database needs a fixed name and its own disk that comes back after a restart. A StatefulSet gives <code>postgres-0</code> both, and I proved it by deleting the Pod and reading the data back.</p></div>
+      <div class="q"><h3>What is the difference between readiness and liveness?</h3><p>Liveness asks "is the process stuck?" and restarts it. Readiness asks "can it serve right now?" and only stops traffic. My <code>/ready</code> checks the database; <code>/health</code> does not, so a database outage never restarts healthy api Pods.</p></div>
+      <div class="q"><h3>How do you keep secrets out of the image and out of Git?</h3><p>The manifests only reference a Secret by name and key with <code>secretKeyRef</code>. The values are created from a file outside the repo. Next, OpenBao and External Secrets Operator will create that Secret for me, and Reloader will restart Pods when it changes.</p></div>
+      <div class="q"><h3>How do you know the image you run is the one you tested?</h3><p>CI scans the image, then ships that same saved file. It is tagged with the commit SHA and the cluster pulls it by digest, so the bytes cannot change.</p></div>
+      <div class="q"><h3>How would you find out something is wrong?</h3><p>That is the plan for milestone 6: Prometheus for numbers, Loki for logs, Grafana to see both, and Alertmanager to tell me. Today I find problems with <code>kubectl get</code>, <code>describe</code>, <code>logs</code> and events, which is also how I would dig in after an alert.</p></div>
+      <div class="q"><h3>Why only one component talking to the database?</h3><p>The rules (valid locations, date types, the 3-day window) live in one place. The web app and the reminder job ask the api, which also keeps the NetworkPolicy simple: only the api may reach port 5432.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">Progress</div>
+      <h2>Milestones</h2>
+    </div>
+    <ol class="road">
+      <li><span class="num">1</span><div class="what"><strong>Ship the api image</strong><span>CI with checks, scan gate and Docker Hub publishing</span></div><span class="tag built">Done</span></li>
+      <li><span class="num">2</span><div class="what"><strong>Kubernetes basics on Minikube</strong><span>Namespace, Deployment, Services, Secret, PostgreSQL StatefulSet</span></div><span class="tag built">Done</span></li>
+      <li><span class="num">3</span><div class="what"><strong>Household tracking</strong><span>Items table and api routes written; web pages and setup Job next</span></div><span class="tag prog">In progress</span></li>
+      <li><span class="num">4</span><div class="what"><strong>Package and protect</strong><span>Helm, Ingress with TLS and basic auth, NetworkPolicies, OpenBao</span></div><span class="tag planned">Planned</span></li>
+      <li><span class="num">5</span><div class="what"><strong>Reminders</strong><span>expiry-checker CronJob and Mailpit</span></div><span class="tag planned">Planned</span></li>
+      <li><span class="num">6</span><div class="what"><strong>Delivery and operations</strong><span>Argo CD, Prometheus, Grafana, Loki, alerts</span></div><span class="tag planned">Planned</span></li>
+      <li><span class="num">7</span><div class="what"><strong>Household trial</strong><span>k3s on AWS within a two-week trial, then resources destroyed</span></div><span class="tag planned">Planned</span></li>
+      <li><span class="num">+</span><div class="what"><strong>Game days</strong><span>Planned failures on the running system with 3 api replicas: bad release, blocked network, lost secret, full disk</span></div><span class="tag planned">Planned</span></li>
+    </ol>
+  </section>
+
+  <footer>Status as of 4 November 2026. "Built" means merged to <code>main</code> and verified; everything else is marked as in progress or planned.</footer>
+</div>
+</body>
+</html>
