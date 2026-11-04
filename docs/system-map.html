@@ -461,6 +461,161 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   <section>
     <div class="head">
+      <div class="eyebrow">Figure 4 · The platform around the app</div>
+      <h2>Secrets, monitoring and networking</h2>
+      <p>Each shaded box is its own namespace, like separate rooms in one building. The app stays in <code>freshtrack</code>; the tools that look after it live next door.</p>
+    </div>
+    <figure>
+      <div class="fig-box">
+        <svg viewBox="0 0 960 520" role="img" aria-label="Namespaces in the cluster. An Ingress controller routes to web in the freshtrack namespace. OpenBao holds secrets, External Secrets Operator reads them and creates the Kubernetes Secret used by the api, and Reloader restarts the api when it changes. Argo CD syncs the Helm chart. Prometheus scrapes api metrics and sends alerts to Alertmanager; Grafana Alloy runs on every node and ships logs to Loki; Grafana shows both. Calico provides Pod networking on every node and enforces NetworkPolicies.">
+          <defs>
+            <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+            </marker>
+          </defs>
+
+          <!-- Namespaces, top row -->
+          <rect class="zone" x="15" y="44" width="165" height="230" rx="12"/>
+          <text class="t-zone" x="29" y="66">ingress</text>
+          <rect class="zone" x="200" y="44" width="420" height="230" rx="12"/>
+          <text class="t-zone" x="214" y="66">freshtrack</text>
+          <rect class="zone" x="640" y="44" width="305" height="230" rx="12"/>
+          <text class="t-zone" x="654" y="66">monitoring</text>
+
+          <!-- Namespaces, bottom row -->
+          <rect class="zone" x="15" y="304" width="165" height="116" rx="12"/>
+          <text class="t-zone" x="29" y="326">argocd</text>
+          <rect class="zone" x="200" y="304" width="130" height="116" rx="12"/>
+          <text class="t-zone" x="212" y="326">openbao</text>
+          <rect class="zone" x="345" y="304" width="150" height="116" rx="12"/>
+          <text class="t-zone" x="357" y="326">external-secrets</text>
+          <rect class="zone" x="510" y="304" width="110" height="116" rx="12"/>
+          <text class="t-zone" x="520" y="326">reloader</text>
+          <rect class="zone" x="640" y="304" width="305" height="116" rx="12"/>
+          <text class="t-zone" x="654" y="326">monitoring · every node</text>
+
+          <!-- ingress -->
+          <g class="n planned"><rect x="30" y="84" width="135" height="56" rx="8"/>
+            <text class="t-name" x="97" y="108" text-anchor="middle">Ingress</text>
+            <text class="t-sub" x="97" y="126" text-anchor="middle">TLS + basic auth</text></g>
+
+          <!-- freshtrack -->
+          <g class="n planned"><rect x="218" y="84" width="110" height="56" rx="8"/>
+            <text class="t-name" x="273" y="108" text-anchor="middle">web</text>
+            <text class="t-sub" x="273" y="126" text-anchor="middle">pages</text></g>
+          <g class="n built"><rect x="358" y="84" width="110" height="56" rx="8"/>
+            <text class="t-name" x="413" y="108" text-anchor="middle">api</text>
+            <text class="t-sub" x="413" y="126" text-anchor="middle">rules + data</text></g>
+          <g class="n built"><rect x="498" y="84" width="108" height="56" rx="8"/>
+            <text class="t-name" x="552" y="108" text-anchor="middle">PostgreSQL</text>
+            <text class="t-sub" x="552" y="126" text-anchor="middle">StatefulSet</text></g>
+          <g class="n planned"><rect x="218" y="184" width="110" height="56" rx="8"/>
+            <text class="t-name" x="273" y="208" text-anchor="middle">checker</text>
+            <text class="t-sub" x="273" y="226" text-anchor="middle">CronJob</text></g>
+          <g class="n built"><rect x="358" y="184" width="110" height="56" rx="8"/>
+            <text class="t-name" x="413" y="208" text-anchor="middle">Secret</text>
+            <text class="t-sub" x="413" y="226" text-anchor="middle">DB credentials</text></g>
+          <g class="n planned"><rect x="498" y="184" width="108" height="56" rx="8"/>
+            <text class="t-name" x="552" y="208" text-anchor="middle">NetworkPolicy</text>
+            <text class="t-sub" x="552" y="226" text-anchor="middle">allow-list</text></g>
+
+          <!-- monitoring -->
+          <g class="n planned"><rect x="655" y="84" width="115" height="56" rx="8"/>
+            <text class="t-name" x="712" y="108" text-anchor="middle">Prometheus</text>
+            <text class="t-sub" x="712" y="126" text-anchor="middle">metrics</text></g>
+          <g class="n planned"><rect x="815" y="84" width="115" height="56" rx="8"/>
+            <text class="t-name" x="872" y="108" text-anchor="middle">Grafana</text>
+            <text class="t-sub" x="872" y="126" text-anchor="middle">dashboards</text></g>
+          <g class="n planned"><rect x="655" y="184" width="115" height="56" rx="8"/>
+            <text class="t-name" x="712" y="208" text-anchor="middle">Alertmanager</text>
+            <text class="t-sub" x="712" y="226" text-anchor="middle">sends alerts</text></g>
+          <g class="n planned"><rect x="815" y="184" width="115" height="56" rx="8"/>
+            <text class="t-name" x="872" y="208" text-anchor="middle">Loki</text>
+            <text class="t-sub" x="872" y="226" text-anchor="middle">logs</text></g>
+
+          <!-- bottom row tools -->
+          <g class="n planned"><rect x="30" y="340" width="135" height="56" rx="8"/>
+            <text class="t-name" x="97" y="364" text-anchor="middle">Argo CD</text>
+            <text class="t-sub" x="97" y="382" text-anchor="middle">syncs from Git</text></g>
+          <g class="n planned"><rect x="212" y="340" width="106" height="56" rx="8"/>
+            <text class="t-name" x="265" y="364" text-anchor="middle">OpenBao</text>
+            <text class="t-sub" x="265" y="382" text-anchor="middle">secrets safe</text></g>
+          <g class="n planned"><rect x="357" y="340" width="126" height="56" rx="8"/>
+            <text class="t-name" x="420" y="364" text-anchor="middle">ESO</text>
+            <text class="t-sub" x="420" y="382" text-anchor="middle">copies secrets in</text></g>
+          <g class="n planned"><rect x="520" y="340" width="90" height="56" rx="8"/>
+            <text class="t-name" x="565" y="364" text-anchor="middle">Reloader</text>
+            <text class="t-sub" x="565" y="382" text-anchor="middle">restarts Pods</text></g>
+          <g class="n planned"><rect x="655" y="340" width="275" height="56" rx="8"/>
+            <text class="t-name" x="792" y="364" text-anchor="middle">Grafana Alloy · DaemonSet</text>
+            <text class="t-sub" x="792" y="382" text-anchor="middle">one Pod per node, reads container logs</text></g>
+
+          <!-- Calico under everything -->
+          <g class="n built"><rect x="15" y="446" width="930" height="56" rx="8"/>
+            <text class="t-tag built" x="15" y="438">BUILT · INSTALLED WITH THE MINIKUBE PROFILE</text>
+            <text class="t-name" x="480" y="470" text-anchor="middle">Calico CNI</text>
+            <text class="t-sub" x="480" y="488" text-anchor="middle">Pod networking on every node, and the part that actually enforces NetworkPolicies</text></g>
+
+          <!-- request path -->
+          <line class="e planned" x1="165" y1="112" x2="216" y2="112" marker-end="url(#a4)"/>
+          <line class="e planned" x1="328" y1="112" x2="356" y2="112" marker-end="url(#a4)"/>
+          <line class="e" x1="468" y1="112" x2="496" y2="112" marker-end="url(#a4)"/>
+          <line class="e" x1="413" y1="184" x2="413" y2="142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="420" y="166">env</text>
+
+          <!-- secrets flow -->
+          <line class="e planned" x1="318" y1="368" x2="355" y2="368" marker-end="url(#a4)"/>
+          <text class="t-edge" x="336" y="358" text-anchor="middle">reads</text>
+          <line class="e planned" x1="420" y1="340" x2="420" y2="242" marker-end="url(#a4)"/>
+          <text class="t-edge" x="428" y="296">creates</text>
+          <path class="e planned" d="M 565 340 L 565 290 L 483 290 L 483 162 L 455 162 L 455 142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="524" y="285" text-anchor="middle">restarts</text>
+
+          <!-- GitOps -->
+          <path class="e planned" d="M 97 340 L 97 290 L 273 290 L 273 276" marker-end="url(#a4)"/>
+          <text class="t-edge" x="185" y="286" text-anchor="middle">syncs Helm chart</text>
+
+          <!-- monitoring flows -->
+          <path class="e planned" d="M 712 84 L 712 24 L 413 24 L 413 82" marker-end="url(#a4)"/>
+          <text class="t-edge" x="562" y="17" text-anchor="middle">scrapes /metrics</text>
+          <line class="e planned" x1="770" y1="112" x2="813" y2="112" marker-end="url(#a4)"/>
+          <line class="e planned" x1="712" y1="140" x2="712" y2="182" marker-end="url(#a4)"/>
+          <text class="t-edge" x="720" y="165">alerts</text>
+          <line class="e planned" x1="872" y1="184" x2="872" y2="142" marker-end="url(#a4)"/>
+          <text class="t-edge" x="880" y="165">logs</text>
+          <line class="e planned" x1="872" y1="340" x2="872" y2="242" marker-end="url(#a4)"/>
+          <text class="t-edge" x="880" y="296">ships logs</text>
+        </svg>
+      </div>
+      <figcaption><b>The secret never lives in Git or in the image.</b> OpenBao keeps it, External Secrets Operator copies it into a normal Kubernetes Secret, and Reloader restarts the api when that Secret changes. The Pods still read it the same way they do today. On the monitoring side, <b>Prometheus collects numbers</b> (CPU, memory, requests, errors) and <b>Loki collects logs</b> (text events), both shown in Grafana. Dashed means planned; the Ingress controller is proposed as Traefik and will be confirmed against current docs first.</figcaption>
+    </figure>
+
+    <div class="two">
+      <div class="panel">
+        <h3>Secrets flow</h3>
+        <ol>
+          <li>The database password is stored once, in OpenBao.</li>
+          <li>External Secrets Operator reads it with its own narrow permission.</li>
+          <li>It creates the Kubernetes Secret <code>postgres-credentials</code>, replacing today's manual step.</li>
+          <li>When the password changes, Reloader restarts the api and database Pods so they read the new value.</li>
+        </ol>
+        <p class="note"><span class="tag planned">Planned</span> Milestone 4, after Helm. OpenBao gets a small PVC so its data survives restarts.</p>
+      </div>
+      <div class="panel">
+        <h3>Observability flow</h3>
+        <ol>
+          <li>Prometheus scrapes numbers from the api and the cluster every few seconds.</li>
+          <li>Grafana Alloy runs one Pod on every node (a DaemonSet) and ships container logs to Loki.</li>
+          <li>Grafana shows metrics and logs side by side on one dashboard.</li>
+          <li>Alertmanager sends an alert when a rule fires, for example "the morning reminder did not run".</li>
+        </ol>
+        <p class="note"><span class="tag planned">Planned</span> Milestone 6. This is what lets game days start from an alert instead of a guess.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
       <div class="eyebrow">Security</div>
       <h2>Protection in layers</h2>
       <p>Version 1 has no user accounts, but a grocery list is still personal. Each layer covers a different way in.</p>
@@ -520,6 +675,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <div class="q"><h3>What is the difference between readiness and liveness?</h3><p>Liveness asks "is the process stuck?" and restarts it. Readiness asks "can it serve right now?" and only stops traffic. My <code>/ready</code> checks the database; <code>/health</code> does not, so a database outage never restarts healthy api Pods.</p></div>
       <div class="q"><h3>How do you keep secrets out of the image and out of Git?</h3><p>The manifests only reference a Secret by name and key with <code>secretKeyRef</code>. The values are created from a file outside the repo. Next, OpenBao and External Secrets Operator will create that Secret for me, and Reloader will restart Pods when it changes.</p></div>
       <div class="q"><h3>How do you know the image you run is the one you tested?</h3><p>CI scans the image, then ships that same saved file. It is tagged with the commit SHA and the cluster pulls it by digest, so the bytes cannot change.</p></div>
+      <div class="q"><h3>How would you find out something is wrong?</h3><p>That is the plan for milestone 6: Prometheus for numbers, Loki for logs, Grafana to see both, and Alertmanager to tell me. Today I find problems with <code>kubectl get</code>, <code>describe</code>, <code>logs</code> and events, which is also how I would dig in after an alert.</p></div>
       <div class="q"><h3>Why only one component talking to the database?</h3><p>The rules (valid locations, date types, the 3-day window) live in one place. The web app and the reminder job ask the api, which also keeps the NetworkPolicy simple: only the api may reach port 5432.</p></div>
     </div>
   </section>
