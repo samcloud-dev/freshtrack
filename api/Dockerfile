@@ -8,6 +8,11 @@ ENV PYTHONUNBUFFERED=1 \
 # All following commands run inside /app in the image.
 WORKDIR /app
 
+# Temporary: CVE-2026-109518 (apt), fixed in 3.0.4 (DSA-6607-1). Remove when the base image includes it.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Install runtime packages first. Docker reuses this layer when only the code changes.
 # Same locked install as CI: wheels only, every file checked against its hash.
 COPY requirements.txt .
