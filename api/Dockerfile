@@ -14,7 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements.txt
 
 # Copy only the application code.
-COPY app.py .
+COPY app.py db.py validation.py schema.sql init_db.py .
 
 # Create a user with no login and no home, and run as it (not root).
 # A numeric ID lets Kubernetes verify "runAsNonRoot".

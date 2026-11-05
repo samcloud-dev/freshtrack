@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) has started: the api's grocery routes are written on a feature branch and not merged yet. The web pages and email reminders are planned.
+**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) is in progress: the api's grocery routes and database schema are written and tested against a real PostgreSQL, but not yet deployed to Minikube. The web pages and email reminders are planned.
 
 ## Contents
 
@@ -24,16 +24,16 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 
 | Area | Current state |
 |---|---|
-| API skeleton | Flask app with `/health` and database-aware `/ready` endpoints |
-| Tests | Four pytest tests covering health and readiness responses; successful database access is mocked |
+| API | Flask app with `/health` and database-aware `/ready` probes, plus grocery routes: `GET /items`, `POST /items`, `PATCH /items/<id>` |
+| Tests | Unit tests for validation, the routes (with a fake database) and the probes; integration tests against a real PostgreSQL, skipped unless `TEST_DATABASE_URL` is set and not run in CI yet |
 | Container | Gunicorn server, digest-pinned Python base image, hash-locked dependencies, non-root UID `10001` |
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
-| Household features | In progress (feature branch, not merged): items table, add / list / mark used-or-discarded api routes with tests. Planned: web pages and the morning reminder |
+| Household features | In progress: items table and add / list / mark used-or-discarded api routes with tests, not yet deployed to Minikube. Planned: web pages and the morning reminder |
 | Platform add-ons | Calico is installed with the Minikube profile and enforces NetworkPolicies. Planned: Ingress with TLS and basic auth, NetworkPolicies, OpenBao + External Secrets Operator + Reloader (milestone 4); Prometheus, Grafana, Loki with Grafana Alloy, Alertmanager and Argo CD (milestone 6) |
 | Deployment | Built on Minikube (PR #12): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). Then Helm, and later a short k3s trial on AWS |
 
-On `main`, the api has only its probe endpoints. The grocery routes and database schema are in review on a feature branch; there are no web pages or reminder worker yet. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
+The api has its probe endpoints and grocery routes; the Minikube deployment still runs an earlier image without them. There are no web pages or reminder worker yet. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
 
 ## Version 1 plan
 
@@ -123,12 +123,17 @@ This starts Flask's development server. The Docker image uses Gunicorn instead. 
 
 The API reads configuration from the process environment. It does not load `.env` files automatically. For Docker, pass an existing environment variable with `-e DATABASE_URL` before the image name. The database hostname must be reachable from inside the container; `localhost` there refers to the container itself.
 
-On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`); no application schema or migrations are supplied yet. Readiness currently opens a connection and runs `SELECT 1`; it does not check an application schema.
+On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`). The `items` table is defined in `api/schema.sql` and created by `python init_db.py` with `DATABASE_URL` set; it is safe to run again and never removes data. Running it as a Kubernetes Job is planned. Readiness opens a connection and runs `SELECT 1`; it does not check that the table exists.
 
 | Method | Path | Result |
 |---|---|---|
 | `GET` | `/health` | `200`, `{"status":"ok"}`; no database check |
 | `GET` | `/ready` | `200`, `{"status":"ready"}` when PostgreSQL responds; otherwise `503`, `{"status":"not ready"}` |
+| `GET` | `/items` | `200`, `{"items":[...]}`: active items, soonest label date first |
+| `POST` | `/items` | JSON with `name`, `quantity`, `location` (`fridge`, `freezer`, `cupboard`), `label_date` (`YYYY-MM-DD`) and `date_type` (`best_before`, `expiration`). `201` with the saved item, or `400` with every field error |
+| `PATCH` | `/items/<id>` | JSON `{"status":"used"}` or `{"status":"discarded"}`. `200` with the closed item; `400` for a bad status, `404` if there is no such item, `409` if it is already closed. The row is kept, never deleted |
+
+If PostgreSQL fails during a grocery request, the api returns `503`, `{"error":"Database unavailable."}`, and logs only the error type, never connection details.
 
 Separating these checks lets a future Kubernetes deployment stop routing traffic during a database outage without restarting a healthy API process.
 
@@ -143,7 +148,18 @@ python -m pytest -v api/tests
 bandit -r api/ -x api/tests
 ```
 
-The tests need no running PostgreSQL instance. They mock the successful readiness result and exercise missing configuration and an unreachable database. Real PostgreSQL integration tests are planned alongside the first SQL implementation.
+The unit tests need no running PostgreSQL instance: they replace the database with fakes. The integration tests in `api/tests/test_db_integration.py` run only when `TEST_DATABASE_URL` points at a throwaway database. Each test works in its own temporary PostgreSQL schema, which is dropped afterwards:
+
+```bash
+docker run --rm -d --name ft-testdb \
+  -e POSTGRES_PASSWORD=test -e POSTGRES_DB=freshtrack_test \
+  -p 127.0.0.1:55432:5432 postgres:18.6-trixie
+TEST_DATABASE_URL="postgresql://postgres:test@127.0.0.1:55432/freshtrack_test" \
+  python -m pytest -q api/tests
+docker stop ft-testdb
+```
+
+The password above is only for this disposable, local-only container. Never point `TEST_DATABASE_URL` at a database with real data.
 
 Runtime dependencies are declared in `api/requirements.in`; development tools are declared in `api/requirements-dev.in`. The corresponding `.txt` files contain pinned versions and hashes and are used for installation by CI and the Docker build.
 
@@ -202,14 +218,18 @@ Failure drills (including the CHECK-stage drills for Ruff, pytest, Bandit, and T
 freshtrack/
 ├── .github/workflows/ci.yml  # Code checks, image build, smoke test, scans, ship to Docker Hub
 ├── api/
-│   ├── app.py                # Flask application factory and probe endpoints
+│   ├── app.py                # Flask application factory, probes and grocery routes
+│   ├── validation.py         # Checks request data and returns plain-language errors
+│   ├── db.py                 # All PostgreSQL queries, with values passed as parameters
+│   ├── schema.sql            # items table, its rules (CHECK constraints) and index
+│   ├── init_db.py            # Creates the table; safe to run more than once
 │   ├── Dockerfile            # API image served by Gunicorn
 │   ├── .dockerignore         # Excludes local files from the build context
 │   ├── requirements.in       # Runtime dependency declarations
 │   ├── requirements.txt      # Runtime dependency lock file
 │   ├── requirements-dev.in   # Development dependency declarations
 │   ├── requirements-dev.txt  # Development dependency lock file
-│   └── tests/                # Test fixtures and health/readiness tests
+│   └── tests/                # Unit tests, plus integration tests for a real PostgreSQL
 ├── deploy/k8s/               # Plain Kubernetes manifests for the Minikube rehearsal
 │   ├── namespace.yaml        # freshtrack Namespace
 │   ├── api-deployment.yaml   # api Deployment: digest-pinned image, probes, resources, security context
