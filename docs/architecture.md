@@ -1,11 +1,11 @@
 # FreshTrack — Architecture
 
-Last updated: 2026-11-03
+Last updated: 2026-11-11
 
 **Status rule:** a part is marked **Built** only when it is merged to `main` and verified.
 Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE, SCAN and SHIP
 (section 9; BUILD to SHIP for the api image only), and the `main` branch ruleset.
-The api has only `/health` and `/ready` so far, so it is still Planned.
+The api is Built: `/health`, `/ready` and the items endpoints (`GET /items`, `POST /items`, `PATCH /items/<id>`), PR #14, verified on Minikube (Entry 10).
 Built on Minikube (PR #12): plain Kubernetes manifests for the Namespace, api and PostgreSQL, see section 7.
 
 ---
@@ -34,9 +34,9 @@ FreshTrack **organises reminders**. It never says whether food is safe to eat.
 | Component | What it is | Job | Status |
 |---|---|---|---|
 | **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Planned |
-| **api** | Flask (JSON over HTTP) | All the rules, and the only component that reads or writes the database. | Planned |
+| **api** | Flask (JSON over HTTP) | All the rules, and the only component that reads or writes the database. | Built (Minikube; PR #14, verified Entry 10) |
 | **expiry-checker** | Python script run by a Kubernetes CronJob | Every morning, asks for due items and sends one email. | Planned |
-| **PostgreSQL** | Database | Stores items, including used and discarded ones. | Planned |
+| **PostgreSQL** | Database | Stores items, including used and discarded ones. | Built (Minikube StatefulSet; verified Entry 9) |
 | **Mailpit** | Fake mail server (dev/test only) | Catches emails so no real email is sent while we test. | Planned |
 
 Every app exposes `/health` (am I alive?) and `/ready` (can I reach what I need?
