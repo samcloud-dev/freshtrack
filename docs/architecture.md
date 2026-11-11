@@ -103,8 +103,8 @@ AWS infrastructure is defined in a separate repo, `terraform-aws-platform`.
 
 ## 7. Kubernetes objects: where each one fits FreshTrack (planned)
 
-**Rehearsal status (2026-11-03):** the objects below are **Built** on Minikube: merged to `main` in PR #12
-and verified (journal Entry 9). Every other row in the table after this one is still Planned.
+**Rehearsal status (2026-11-11):** the objects below are **Built** on Minikube: merged to `main` in PR #12
+and verified (journal Entry 9), plus the `init-db` Job (PR #20, Entry 13). Every other row in the table after this one is still Planned.
 Both containers have CPU, memory and ephemeral-storage requests and limits.
 
 | Object | What exists on Minikube | Verified |
@@ -115,6 +115,7 @@ Both containers have CPU, memory and ephemeral-storage requests and limits.
 | Secret | `postgres-credentials`, created by hand from a file outside the repo | Key sizes only, values never shown (Entry 8) |
 | Service (headless) | `postgres`, `clusterIP: None`, port 5432 | EndpointSlice points at `postgres-0` (Entry 9) |
 | StatefulSet, PVC, PV, StorageClass | PostgreSQL 18.6, PVC `data-postgres-0` (1Gi, `standard` / minikube-hostpath) | Row kept after deleting `postgres-0` (Entry 9) |
+| Job | `init-db`: runs `init_db.py` with the api image and Secret; `backoffLimit: 3`, `activeDeadlineSeconds: 120`, `ttlSecondsAfterFinished: 3600`, non-root, no token (PR #20) | `Complete 1/1`, log `Schema is ready`, existing items untouched (Entry 13) |
 
 
 | Object | FreshTrack use |

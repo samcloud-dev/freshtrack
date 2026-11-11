@@ -875,3 +875,58 @@ automatically stopped broken or messy code from reaching `main`.
 - Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
 - Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
 - Still owed: `db.py` explain-back, Entry 6 explain-back.
+
+## Entry 13 — 2026-11-11 — The items table is created by a Kubernetes Job
+
+**Problem**
+- In Entry 10 the `items` table was created by hand: `kubectl exec -n freshtrack deploy/api -- python init_db.py`.
+- That depends on someone remembering. On a fresh cluster (or the AWS trial) the api would start, `/ready` would pass
+  (it checks the connection, not the table), and `/items` would return `503` until someone ran the command.
+
+**Decision**
+- A Kubernetes **Job**: it runs a Pod until the task succeeds once, then stops. A Deployment would keep restarting a finished script.
+- Same image and same Secret as the api Deployment: the image already contains `init_db.py`, so no new image and no new secret.
+- `init_db.py` exits `0` on success and `1` on failure, which is exactly what the Job uses to decide Complete or retry.
+- Safe to run again: `api/schema.sql` uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`, with no `DROP`;
+  CI checks this with `test_schema_can_be_applied_twice`.
+- Settings: `backoffLimit: 3` (retries), `activeDeadlineSeconds: 120` (overall time limit), `ttlSecondsAfterFinished: 3600`
+  (delete the finished Job after one hour; a Job's Pod template cannot be changed, so it must be gone before it is applied again),
+  `restartPolicy: Never` (each retry is a new Pod, and a failed Pod keeps its logs).
+- Same hardening as the api: non-root UID 10001, no privilege escalation, all capabilities dropped, seccomp `RuntimeDefault`,
+  no ServiceAccount token, CPU / memory / ephemeral-storage requests and limits. No ports or probes: nothing connects to it.
+
+**Implementation**
+- `deploy/k8s/init-db-job.yaml` on branch `deploy/init-db-job`; `command: ["python", "init_db.py"]` replaces the image's gunicorn command
+  (the image's working directory is `/app`, where the script is).
+- Image `samayohub/freshtrack-api:de3370c…@sha256:68b67bd3…`, `DATABASE_URL` from Secret `postgres-credentials`.
+- PR #20 squash-merged as `849db43`.
+
+**Verification**
+- Before: `kubectl get jobs -n freshtrack` → `No resources found in freshtrack namespace.`
+- File check: YAML parsed as `batch/v1 Job`; image and `env` identical to the api Deployment;
+  `kubectl apply --dry-run=server` → `job.batch/init-db created (server dry run)`.
+- Watch: Pod `init-db-lgx2j` went `Pending → ContainerCreating → Running (1/1) → Completed (0/1)`, `RESTARTS 0`.
+- `kubectl get jobs` → `init-db  Complete  1/1  15s` (started `18:45:47Z`, completed `18:46:02Z`).
+- `kubectl logs -n freshtrack job/init-db` → `INFO Schema is ready`.
+- Data check (read-only `SELECT`): the 2 items from 2026-11-07 (juice, milk) still there, both `active`.
+
+**Troubleshooting**
+1. *Branch named like a file:* the branch was created as `deploy/k8s/init-db-job.yml`. Renamed before pushing with
+   `git branch -m deploy/init-db-job` (safe because it was only local).
+2. *Wrong prediction:* I expected the Job to remove the two items, because they were added by hand earlier. They stayed:
+   the table and rows live in PostgreSQL on its PersistentVolume, and the script only creates the table if it is missing.
+
+**Lesson**
+- A Job runs a task to completion and stops; `Completed 0/1` is success, not a broken Pod.
+- The exit code is the contract between my script and Kubernetes: 0 means done, anything else means retry.
+- Two different protections: the PersistentVolume keeps data when Pods disappear; idempotent SQL (`IF NOT EXISTS`, no `DROP`)
+  keeps data when a setup task runs again. A volume does not protect data from a bad command.
+- A Job's Pod template is immutable, so `ttlSecondsAfterFinished` (or deleting the old Job) is needed before running it again.
+
+**Next step**
+- Web pages (Flask templates): add an item, see the list soonest first, mark used or discarded. The web app calls the api, never the database.
+- Later: run `init-db` automatically before the api on each deploy (a Helm hook, or an Argo CD sync hook).
+- Update the PostgreSQL digest in CI and the StatefulSet together, after the cooldown.
+- Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
+- Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
+- Still owed: `db.py` explain-back, Entry 6 explain-back.
