@@ -57,6 +57,61 @@ def list_active_items(database_url):
         ).fetchall()
 
 
+def list_closed_items(database_url, limit=100):
+    """Used and discarded items, most recently closed first (the trial record)."""
+    with connect(database_url) as conn:
+        return conn.execute(
+            f"""
+            SELECT {COLUMNS} FROM items
+            WHERE status <> 'active'
+            ORDER BY closed_at DESC, id DESC
+            LIMIT %s
+            """,  # nosec B608 - COLUMNS is a fixed constant; values are parameters
+            (limit,),
+        ).fetchall()
+
+
+def get_item(database_url, item_id):
+    """One item by id, active or closed. None if there is no such item."""
+    with connect(database_url) as conn:
+        return conn.execute(
+            f"SELECT {COLUMNS} FROM items WHERE id = %s",  # nosec B608
+            (item_id,),
+        ).fetchone()
+
+
+def update_item(database_url, item_id, item):
+    """Change the details of an active item. Status and dates stay as they are.
+
+    Closed items are trial records, so they are never changed.
+    Returns (outcome, item):
+      ("updated", item)    it was active and now has the new details
+      ("closed", item)     it is used or discarded; nothing changed
+      ("not_found", None)  there is no item with this id
+    """
+    with connect(database_url) as conn:
+        updated = conn.execute(
+            f"""
+            UPDATE items
+            SET name = %(name)s, quantity = %(quantity)s, location = %(location)s,
+                label_date = %(label_date)s, date_type = %(date_type)s
+            WHERE id = %(id)s AND status = 'active'
+            RETURNING {COLUMNS}
+            """,  # nosec B608 - COLUMNS is a fixed constant; values are parameters
+            {**item, "id": item_id},
+        ).fetchone()
+        if updated is not None:
+            return "updated", updated
+
+        existing = conn.execute(
+            f"SELECT {COLUMNS} FROM items WHERE id = %s",  # nosec B608
+            (item_id,),
+        ).fetchone()
+        if existing is None:
+            return "not_found", None
+        return "closed", existing
+
+
 def close_item(database_url, item_id, status):
     """Mark an active item used or discarded. The row is kept, never deleted.
 
