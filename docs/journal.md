@@ -775,3 +775,59 @@ automatically stopped broken or messy code from reaching `main`.
 - Watch for a `python:3.12-slim-trixie` base image with `apt` 3.0.4, then remove the temporary apt fix.
 - Future idea (out of scope, not planned): quick-add from history, then barcode photo + Open Food Facts lookup, decided by trial feedback.
 - Still owed: `db.py` explain-back, Entry 6 explain-back, Trivy upgrade after cooldown.
+
+## Entry 11 — 2026-11-11 — Trivy gate catches zlib CVEs; patched image built, shipped and rolled out
+
+**Problem**
+- The PR for Entry 10 (image bump + journal only, no app or Dockerfile change) failed CI at **Scan the image - gate (Trivy)**.
+- Trivy found 2 HIGH vulnerabilities in `zlib1g` `1:1.3.dfsg+really1.3.1-1+b1` (the compression library in the Debian base image):
+  CVE-2026-76844 and CVE-2026-85091, both with status `fixed`.
+- The image had not changed. Trivy's vulnerability database had: new CVEs were published for a package already in the image.
+
+**Decision**
+- Patch, do not ignore. The gate fails only on *fixable* HIGH/CRITICAL, and a fix existed, so ignoring it would weaken the gate.
+- Checked the Debian security tracker (zlib source package): both CVEs fixed for trixie in `1:1.3.dfsg+really1.3.1-1+deb13u1` (DSA-6613-1).
+- Trivy's title for CVE-2026-76844 said "webpack-dev-middleware". The tracker, package name and fixed version all point to zlib, so I trusted those.
+- Did not switch the base image: the newest `python:3.12-slim-trixie` was 2 days old (inside the release cooldown) and not confirmed to contain the fix.
+- Same pattern as the `apt` fix: upgrade only that package, pinned to the exact fixed version, with a comment saying when to remove it.
+
+**Implementation**
+- `api/Dockerfile`: the temporary security step now upgrades `zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1` next to `apt` and `libapt-pkg7.0`,
+  with one comment line per fix (CVE, fixed version, DSA).
+- Built locally as `freshtrack-api:zlib-test`; `dpkg -s zlib1g` showed `Version: 1:1.3.dfsg+really1.3.1-1+deb13u1`.
+- Commit `8850dab` on `deploy/items-api-image`; PR #15 squash-merged as `de3370c`.
+- `main` CI shipped `samayohub/freshtrack-api:de3370cedcf6a3f67e6ace5cadfb5043f7a6bc65`,
+  digest `sha256:68b67bd36071d0ab6b9f572d90ac8d0514035ec722af2108cf1c47b4208570a6`.
+- Branch `deploy/zlib-patched-image`: replaced the image line (line 32) in `deploy/k8s/api-deployment.yaml`, `kubectl apply`. PR #16 merged as `f06e39f`.
+
+**Verification**
+- Gate before: `/image.tar (debian 13.7)` 2 HIGH (zlib), `exit code 1`. Gate after: 0, passed. (Screenshots of both.)
+- The full report still lists 47 HIGH, all without a released fix; the gate ignores unfixed ones by design and the report keeps them visible.
+- Digest confirmed in two places: the CI `ship` log and Docker Hub (`docker buildx imagetools inspect`).
+- `digest-mismatch: error` in the `ship` log is a setting (fail if the artifact changed between jobs); the downloaded artifact matched its expected digest.
+- Cluster: `kubectl get deploy api -o wide` shows the `de3370c…@sha256:68b67bd3…` image, 1/1 available. New ReplicaSet `api-98b46599` has 1 Pod Ready
+  (`api-98b46599-rns65`); the previous one, `api-657b677b4c` (`627d2a6…`), is at 0. `kubectl rollout history` shows revision 8; revision 7 is the old image.
+
+**Troubleshooting**
+1. *Gate failed on a PR with no image change:* new CVEs, not new code. Fixed by patching zlib (above).
+2. *Server-side dry run failed: `dial tcp 127.0.0.1:8080: connection refused`.* kubectl falls back to localhost:8080 when no context is set.
+   `minikube profile list` showed `freshtrack` `Stopped`, and `kubectl config current-context` said `current-context is not set`. Fixed with `minikube start -p freshtrack`.
+3. *Forgot the before screenshot.* The old image is still on record: `kubectl get rs -n freshtrack -l app.kubernetes.io/name=api -o wide`
+   lists every ReplicaSet with its image (old ones at 0 Pods), and `kubectl rollout history deployment/api -n freshtrack --revision=7` shows the old image.
+
+**Lesson**
+- An image that passed yesterday can fail today without any change: the list of known vulnerabilities grows. That is why the gate runs on every build and why weekly re-scans matter.
+- A security gate is only useful if I fix what it finds. Patching one package to a pinned fixed version is a small, reversible change; an ignore list hides the problem.
+- I check the distribution's own security tracker before trusting a scanner's title, because scanner data can be mislabelled.
+- Kubernetes keeps old ReplicaSets at 0 Pods. They are the history `rollout undo` uses, and evidence of what ran before.
+- Next time: open `kubectl get pods --watch` and `kubectl get rs --watch` before `kubectl apply`, to see the new Pod become Ready before the old one is removed.
+
+*(Samson: reword these in your own words if you like.)*
+
+**Next step**
+- Add a PostgreSQL service container to CI so the integration tests run on every pull request.
+- Turn `init_db.py` into a Kubernetes Job.
+- Then: web pages (Flask templates).
+- Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
+- Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
+- Still owed: `db.py` explain-back, Entry 6 explain-back.
