@@ -25,7 +25,7 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Area | Current state |
 |---|---|
 | API | Flask app with `/health` and database-aware `/ready` probes, plus grocery routes: `GET /items`, `POST /items`, `PATCH /items/<id>` |
-| Tests | Unit tests for validation, the routes (with a fake database) and the probes; integration tests against a real PostgreSQL, skipped unless `TEST_DATABASE_URL` is set and not run in CI yet |
+| Tests | Unit tests for validation, the routes (with a fake database) and the probes; integration tests against a real PostgreSQL, skipped unless `TEST_DATABASE_URL` is set. CI sets it and runs them on every push and pull request against a throwaway PostgreSQL service container (same pinned image as the Minikube StatefulSet) |
 | Container | Gunicorn server, digest-pinned Python base image, hash-locked dependencies, non-root UID `10001` |
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
