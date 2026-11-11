@@ -144,6 +144,9 @@ def test_item_id_must_be_a_number(client):
         ("get", "/items", None),
         ("post", "/items", NEW_ITEM),
         ("patch", "/items/1", {"status": "used"}),
+        ("get", "/items?status=closed", None),
+        ("get", "/items/1", None),
+        ("put", "/items/1", NEW_ITEM),
     ],
 )
 def test_database_failure_is_503_without_details(
@@ -152,9 +155,104 @@ def test_database_failure_is_503_without_details(
     def broken(*args):
         raise psycopg.OperationalError("connection to server at 10.0.0.1 failed")
 
-    for name in ("list_active_items", "create_item", "close_item"):
+    for name in (
+        "list_active_items",
+        "list_closed_items",
+        "get_item",
+        "create_item",
+        "update_item",
+        "close_item",
+    ):
         monkeypatch.setattr(api_module.db, name, broken)
     response = getattr(client, method)(path, json=body)
     assert response.status_code == 503
     assert response.get_json() == {"error": "Database unavailable."}
     assert b"10.0.0.1" not in response.data
+
+
+# --- Closed list (history) ------------------------------------------------------
+
+
+def test_list_closed_items(client, monkeypatch):
+    closed = row(status="used", closed_at=CREATED)
+    monkeypatch.setattr(api_module.db, "list_closed_items", lambda url: [closed])
+    response = client.get("/items?status=closed")
+    assert response.status_code == 200
+    assert response.get_json()["items"][0]["status"] == "used"
+
+
+def test_status_active_is_the_default_list(client, monkeypatch):
+    monkeypatch.setattr(api_module.db, "list_active_items", lambda url: [row()])
+    assert client.get("/items?status=active").get_json()["items"][0]["id"] == 1
+
+
+def test_unknown_list_status_is_400(client):
+    response = client.get("/items?status=eaten")
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "errors": {"status": "Must be one of: active, closed."}
+    }
+
+
+# --- One item -------------------------------------------------------------------
+
+
+def test_get_one_item(client, monkeypatch):
+    monkeypatch.setattr(api_module.db, "get_item", lambda url, item_id: row())
+    response = client.get("/items/1")
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Greek yogurt"
+
+
+def test_get_unknown_item_is_404(client, monkeypatch):
+    monkeypatch.setattr(api_module.db, "get_item", lambda url, item_id: None)
+    response = client.get("/items/999")
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "Item not found."}
+
+
+# --- Edit -----------------------------------------------------------------------
+
+
+def test_edit_item_saves_checked_values(client, monkeypatch):
+    seen = {}
+
+    def fake_update(url, item_id, item):
+        seen.update(item_id=item_id, **item)
+        return "updated", row(location="cupboard")
+
+    monkeypatch.setattr(api_module.db, "update_item", fake_update)
+    response = client.put("/items/1", json={**NEW_ITEM, "location": "cupboard"})
+    assert response.status_code == 200
+    assert response.get_json()["location"] == "cupboard"
+    assert seen["item_id"] == 1
+    assert seen["label_date"] == date(2026, 11, 6)
+
+
+def test_edit_rejects_bad_input_without_touching_database(client, monkeypatch):
+    def must_not_run(url, item_id, item):
+        raise AssertionError("database should not be called")
+
+    monkeypatch.setattr(api_module.db, "update_item", must_not_run)
+    response = client.put("/items/1", json={**NEW_ITEM, "name": ""})
+    assert response.status_code == 400
+    assert response.get_json() == {"errors": {"name": "Required."}}
+
+
+def test_edit_unknown_item_is_404(client, monkeypatch):
+    monkeypatch.setattr(
+        api_module.db, "update_item", lambda url, item_id, item: ("not_found", None)
+    )
+    response = client.put("/items/999", json=NEW_ITEM)
+    assert response.status_code == 404
+
+
+def test_edit_closed_item_is_409(client, monkeypatch):
+    closed = row(status="used", closed_at=CREATED)
+    monkeypatch.setattr(
+        api_module.db, "update_item", lambda url, item_id, item: ("closed", closed)
+    )
+    response = client.put("/items/1", json=NEW_ITEM)
+    assert response.status_code == 409
+    assert response.get_json()["error"] == "Item is closed and cannot be edited."
+    assert response.get_json()["item"]["status"] == "used"
