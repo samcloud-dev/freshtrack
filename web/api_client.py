@@ -18,6 +18,18 @@ class ApiUnavailable(Exception):
     """The api could not be reached, or it answered with a server error."""
 
 
+def item_path(item_id):
+    """'/items/<id>' for a positive whole number only.
+
+    int() refuses text like '../ready', so a caller can never steer the request
+    to a different api address (path traversal), even if it forgets to check.
+    """
+    number = int(item_id)
+    if number < 1:
+        raise ValueError("item_id must be a positive whole number")
+    return f"/items/{number}"
+
+
 class ApiClient:
     def __init__(self, base_url):
         # Only plain web addresses: never file:// or other schemes.
@@ -79,7 +91,7 @@ class ApiClient:
 
     def get_item(self, item_id):
         """One item (active or closed), or None if it does not exist."""
-        status, body = self._call("GET", f"/items/{item_id}")
+        status, body = self._call("GET", item_path(item_id))
         if status == 200:
             return body
         if status == 404:
@@ -92,7 +104,7 @@ class ApiClient:
         Returns (outcome, errors): ("updated", {}), ("invalid", errors),
         ("not_found", {}) or ("closed", {}).
         """
-        status, body = self._call("PUT", f"/items/{item_id}", fields)
+        status, body = self._call("PUT", item_path(item_id), fields)
         if status == 200:
             return "updated", {}
         if status == 400:
@@ -117,7 +129,7 @@ class ApiClient:
 
         Returns "closed", "not_found", "already_closed" or "invalid".
         """
-        status, _ = self._call("PATCH", f"/items/{item_id}", {"status": status_value})
+        status, _ = self._call("PATCH", item_path(item_id), {"status": status_value})
         outcomes = {
             200: "closed",
             404: "not_found",

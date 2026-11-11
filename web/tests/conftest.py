@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -88,7 +89,6 @@ def client(app):
 
 @pytest.fixture
 def csrf(client):
-    """A valid form token, the same way a real page gets one."""
-    with client.session_transaction() as session:
-        session["csrf"] = "test-token"
-    return "test-token"
+    """A real form token, read from a page the same way a browser gets one."""
+    page = client.get("/add").get_data(as_text=True)
+    return re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)

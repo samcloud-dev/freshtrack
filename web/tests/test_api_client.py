@@ -6,7 +6,7 @@ import urllib.error
 
 import api_client
 import pytest
-from api_client import ApiClient, ApiUnavailable
+from api_client import ApiClient, ApiUnavailable, item_path
 
 
 class FakeResponse:
@@ -153,3 +153,24 @@ def test_update_item_server_error(monkeypatch, client):
     answer(monkeypatch, 503, {})
     with pytest.raises(ApiUnavailable):
         client.update_item(3, {})
+
+
+@pytest.mark.parametrize("bad", ["../ready", "3/../../health", "0", "-1", "", "3.5"])
+def test_item_path_refuses_anything_but_a_positive_whole_number(bad):
+    with pytest.raises(ValueError):
+        item_path(bad)
+
+
+def test_item_path_builds_a_clean_path():
+    assert item_path(3) == "/items/3"
+    assert item_path("12") == "/items/12"
+
+
+@pytest.mark.parametrize("method", ["get_item", "update_item", "close_item"])
+def test_client_never_sends_a_traversal_path(monkeypatch, client, method):
+    seen = []
+    answer(monkeypatch, 200, {}, seen)
+    args = {"get_item": (), "update_item": ({},), "close_item": ("used",)}[method]
+    with pytest.raises(ValueError):
+        getattr(client, method)("../ready", *args)
+    assert seen == []  # nothing was sent to the api

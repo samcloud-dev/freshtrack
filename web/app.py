@@ -3,10 +3,8 @@
 It never touches the database. Every read and write goes through the api.
 """
 
-import hmac
 import logging
 import os
-import secrets
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,9 +18,9 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
+from flask_wtf.csrf import CSRFError, CSRFProtect
 
 log = logging.getLogger(__name__)
 
@@ -75,23 +73,22 @@ def create_app():
         return app.config["API"]
 
     # --- Form protection (CSRF) ---------------------------------------------
-    # Every form carries a random token that only our own pages know. A form
-    # posted from another website does not have it, so it is refused.
-    def csrf_token():
-        if "csrf" not in session:
-            session["csrf"] = secrets.token_urlsafe(32)
-        return session["csrf"]
+    # Flask-WTF's CSRFProtect: every form carries a signed token that only our
+    # own pages can produce. A form posted from another website does not have
+    # it, so the POST is refused before any route runs.
+    # No time limit: the token lasts as long as the browser session, so a page
+    # left open on the kitchen counter still works.
+    app.config["WTF_CSRF_TIME_LIMIT"] = None
+    CSRFProtect(app)
 
-    app.jinja_env.globals["csrf_token"] = csrf_token
-
-    @app.before_request
-    def check_csrf():
-        if request.method != "POST":
-            return
-        sent = request.form.get("csrf_token", "").encode("utf-8")
-        expected = session.get("csrf", "").encode("utf-8")
-        if not expected or not hmac.compare_digest(sent, expected):
-            abort(400)
+    @app.errorhandler(CSRFError)
+    def form_expired(exc):
+        message = (
+            "This form has expired. Please go back, reload the page and try again."
+        )
+        return render_template(
+            "error.html", heading="Please try again", message=message
+        ), 400
 
     # --- Browser safety headers ----------------------------------------------
     @app.after_request

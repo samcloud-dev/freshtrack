@@ -345,3 +345,18 @@ def test_history_empty(client):
 
 def test_home_links_to_history(client):
     assert 'href="/history"' in client.get("/").get_data(as_text=True)
+
+
+def test_a_token_from_another_session_is_refused(app, fake_api, csrf):
+    # A token is tied to the browser session that received it.
+    other_browser = app.test_client()
+    response = other_browser.post("/add", data={**GOOD_FORM, "csrf_token": csrf})
+    assert response.status_code == 400
+    assert fake_api.added == []
+
+
+def test_refused_form_shows_a_friendly_page(client):
+    response = client.post("/add", data=GOOD_FORM)
+    page = response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert "This form has expired" in page
