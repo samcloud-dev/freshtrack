@@ -708,3 +708,70 @@ automatically stopped broken or messy code from reaching `main`.
 - *Merge.* PR #12 squash-merged as `03ce114`. The file snapshot (tree) of `main` is identical to the branch tip.
   `main` CI: `checks`, `SonarCloud Code Analysis` and `ship` all passed; Docker Hub tag `03ce114…` (same app code as `e6c9f93`).
 - *Lesson.* A YAML syntax check only proves the file parses. `kubectl diff` or `--dry-run=server` proves the cluster accepts it. Edit inside an existing block; do not paste a new one.
+
+## Entry 10 — 2026-11-07 — Milestone 3: items api built, shipped and running on Minikube with real groceries
+
+**Problem**
+- Until now the api only had `/health` and `/ready`. FreshTrack could not store a grocery.
+- Version 1 needs: add an item, list active items soonest date first, and mark an item used or discarded without deleting it.
+- Once built and shipped, the new image had to replace the old one in the cluster, and the cluster database needed the `items` table.
+
+**Decision**
+- One `items` table (`api/schema.sql`) with CHECK constraints, so the database itself rejects a bad location, date type or status.
+- Input checked in Python first (`validation.py`), returning `400` with every field error at once, not only the first.
+- All SQL in `db.py`, with values passed as parameters (never pasted into the SQL text), which prevents SQL injection.
+- Used and discarded items get `status` and `closed_at`; rows are never deleted (trial data).
+- Any database error returns `503 "Database unavailable."` and logs only the error class name, never connection details.
+- Table creation by `init_db.py`, safe to run more than once. Running it as a Kubernetes Job is planned; for now it is run by hand.
+- Deploy by changing the image tag + digest in `deploy/k8s/api-deployment.yaml` on a feature branch (`deploy/items-api-image`), so Git stays the source of truth.
+
+**Implementation**
+- *Build (2026-11-04, PR #14, merged as `627d2a6`):* `schema.sql` → `validation.py` → `db.py` → `app.py`, explained file by file.
+  Endpoints: `GET /items`, `POST /items`, `PATCH /items/<id>`. Dockerfile `COPY` extended to the new files. README updated.
+- *Ship:* CI pushed `samayohub/freshtrack-api:627d2a69ed029891a637a40a50e1d161f31b7849`,
+  digest `sha256:75618b3ff72a2814b61d18e873047c451758350c8a3168e28eea98364f8f5976` (2026-11-05 03:45 UTC).
+- *Deploy (2026-11-07):* started the stopped cluster (`minikube start -p freshtrack`), replaced the image line, `kubectl apply`.
+  Created the table with `kubectl exec -n freshtrack deploy/api -- python init_db.py`.
+  Dropped the Entry 9 `proof` test table after checking its contents (`DROP TABLE proof;`).
+  `psql` was run with the container's own `$POSTGRES_USER` / `$POSTGRES_DB`, so no credential was printed.
+
+**Verification**
+- Build: 61 tests passed (unit + integration against a throwaway `postgres:18.6`). Smoke test: `/health` 200, `/ready` 503 without a database.
+- Rollout: `deployment "api" successfully rolled out`; new Pod `api-657b677b4c-…` 1/1 on the `627d2a6…` image; old ReplicaSets kept at 0 Pods (history for rollback).
+- Before the table existed: `/ready` → `200`, `/items` → `503`; api log `Database error: UndefinedTable`.
+- After `init_db.py`: `/items` → `200 {"items":[]}`.
+- Added two real groceries with `POST /items` (`201`). `GET /items` returned them **soonest date first**:
+  milk (best before 2026-11-01, already past, added second) before juice (best before 2026-11-10, added first). Both `status: active`, `closed_at: null`.
+- `\dt` after the cleanup: only `items`.
+
+**Troubleshooting**
+1. *Trivy gate failed on the build:* HIGH CVE-2026-109518 in `apt` 3.0.3 (fixed in 3.0.4, DSA-6607-1). The newest `python:3.12.16-slim-trixie`
+   still had 3.0.3. Temporary fix: the Dockerfile upgrades `apt` and `libapt-pkg7.0` to 3.0.4, with a comment to remove it when the base image catches up.
+2. *One integration test failed:* a bug in the test helper (a `name` argument clash), not in the app. Fixed with `item.update(changes)` → 61 passed.
+3. *Dockerfile edited in the wrong folder:* I changed it in the main folder instead of the `freshtrack-items` worktree. Moved with `cp` + `git restore`.
+4. *Cluster down at start:* `connection refused` from kubectl; `minikube profile list` showed `freshtrack` `Stopped`. Started it; data was intact.
+5. *`port-forward` failed: `bind: address already in use` on 8080.* `docker ps` showed a Jenkins container from another lab holding 8080.
+   Fix: stop Jenkins (or use another local port such as `8081:80`; the left number is my laptop, the right one the Service).
+6. *`/items` returned `404`, not the expected error.* The Pod behind the Service was the **old** image again.
+   `kubectl rollout history` showed revision 4 gone and revision 6 new, and the last change came from plain `kubectl`, not `kubectl apply`:
+   the signature of a `kubectl rollout undo`. The cluster had drifted from the YAML in Git. Fix: `kubectl apply -f deploy/k8s/api-deployment.yaml` again.
+7. *Predicted `500`, got `503`.* The app's error handler turns every database error into 503. The log line `UndefinedTable` gave the real cause.
+
+**Lesson**
+- `kubectl get deploy` shows the desired state (the order); `kubectl get pods` shows the actual state (the kitchen). A controller works until they match.
+- A rolling update with 1 replica starts the new Pod first and removes the old one only when the new one is Ready, so there is no downtime.
+- Readiness checked that the database answers, not that my table exists. A Pod can be Ready and still not able to do its job.
+- The HTTP status code says something failed; the logs say what. Check `kubectl logs` before trusting a guess.
+- Manual commands like `rollout undo` make the cluster drift from Git. Argo CD will later detect and correct this automatically.
+- 400 = my request broke the rules; 404 = the thing does not exist; 5xx = the server side failed.
+
+*(Samson: reword these in your own words if you like.)*
+
+**Next step**
+- Open the pull request for `deploy/items-api-image` (image bump + this entry). After merge, mark the items api Built in `docs/architecture.md`.
+- Add a PostgreSQL service container to CI so the integration tests run on every pull request.
+- Turn `init_db.py` into a Kubernetes Job (to run before the api needs the table).
+- Then: web pages (Flask templates).
+- Watch for a `python:3.12-slim-trixie` base image with `apt` 3.0.4, then remove the temporary apt fix.
+- Future idea (out of scope, not planned): quick-add from history, then barcode photo + Open Food Facts lookup, decided by trial feedback.
+- Still owed: `db.py` explain-back, Entry 6 explain-back, Trivy upgrade after cooldown.
