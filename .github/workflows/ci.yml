@@ -23,6 +23,23 @@ jobs:
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
+# A throwaway PostgreSQL for the integration tests. Same image as the cluster.
+# Lives only for this run; the password is for this disposable database only.
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: freshtrack_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       # Download the code without leaving a Git token on the runner.
       - name: Get the code
@@ -48,8 +65,10 @@ jobs:
         run: ruff format --check api/
 
       # 2. TEST - does the code work?
-      - name: Unit tests
+      - name: Tests (unit + integration)
         working-directory: api
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/freshtrack_test
         run: pytest -v
 
       # 3. SCAN - is it safe?
