@@ -29,7 +29,7 @@ spec:
       containers:
         - name: api
           # Tag = git commit, digest = the exact bytes CI scanned and shipped.
-          image: samayohub/freshtrack-api:627d2a69ed029891a637a40a50e1d161f31b7849@sha256:75618b3ff72a2814b61d18e873047c451758350c8a3168e28eea98364f8f5976
+          image: samayohub/freshtrack-api:de3370cedcf6a3f67e6ace5cadfb5043f7a6bc65@sha256:68b67bd36071d0ab6b9f572d90ac8d0514035ec722af2108cf1c47b4208570a6
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
