@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) is in progress: the api's grocery routes and database schema are written and tested against a real PostgreSQL, but not yet deployed to Minikube. The web pages and email reminders are planned.
+**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) is in progress: the api's grocery routes run on Minikube, tested in CI against a real PostgreSQL, and a Kubernetes Job creates the database table. The web pages and email reminders are planned.
 
 ## Contents
 
@@ -29,11 +29,11 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Container | Gunicorn server, digest-pinned Python base image, hash-locked dependencies, non-root UID `10001` |
 | CI | Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans |
 | Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
-| Household features | In progress: items table and add / list / mark used-or-discarded api routes with tests, not yet deployed to Minikube. Planned: web pages and the morning reminder |
+| Household features | In progress: items table and add / list / mark used-or-discarded api routes with tests, running on Minikube (journal Entry 10). Planned: web pages and the morning reminder |
 | Platform add-ons | Calico is installed with the Minikube profile and enforces NetworkPolicies. Planned: Ingress with TLS and basic auth, NetworkPolicies, OpenBao + External Secrets Operator + Reloader (milestone 4); Prometheus, Grafana, Loki with Grafana Alloy, Alertmanager and Argo CD (milestone 6) |
-| Deployment | Built on Minikube (PR #12): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). Then Helm, and later a short k3s trial on AWS |
+| Deployment | Built on Minikube (PR #12): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). A one-off `init-db` Job creates the `items` table (PR #20, journal Entry 13). Then Helm, and later a short k3s trial on AWS |
 
-The api has its probe endpoints and grocery routes; the Minikube deployment still runs an earlier image without them. There are no web pages or reminder worker yet. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
+The api runs on Minikube with its probe endpoints and grocery routes. There are no web pages or reminder worker yet. See the [architecture status rules](docs/architecture.md) for what qualifies as Built.
 
 ## Version 1 plan
 
@@ -51,7 +51,7 @@ Account registration, multiple households, native mobile apps, barcode or receip
 
 ## Architecture
 
-The following is the **planned application architecture**. Today the api (probe endpoints) and PostgreSQL run on Minikube; the other parts are planned. The [system map](docs/system-map.html) draws this, the delivery pipeline, the Kubernetes objects and the platform tools, each marked Built, In progress, or Planned.
+The following is the **planned application architecture**. Today the api (probe endpoints and grocery routes) and PostgreSQL run on Minikube; the other parts are planned. The [system map](docs/system-map.html) draws this, the delivery pipeline, the Kubernetes objects and the platform tools, each marked Built, In progress, or Planned.
 
 ```mermaid
 flowchart LR
@@ -123,7 +123,7 @@ This starts Flask's development server. The Docker image uses Gunicorn instead. 
 
 The API reads configuration from the process environment. It does not load `.env` files automatically. For Docker, pass an existing environment variable with `-e DATABASE_URL` before the image name. The database hostname must be reachable from inside the container; `localhost` there refers to the container itself.
 
-On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`). The `items` table is defined in `api/schema.sql` and created by `python init_db.py` with `DATABASE_URL` set; it is safe to run again and never removes data. Running it as a Kubernetes Job is planned. Readiness opens a connection and runs `SELECT 1`; it does not check that the table exists.
+On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`). The `items` table is defined in `api/schema.sql` and created by `python init_db.py` with `DATABASE_URL` set; it is safe to run again and never removes data. On Minikube it runs as a Kubernetes Job with the same image and Secret as the api: `kubectl apply -f deploy/k8s/init-db-job.yaml`, then `kubectl logs -n freshtrack job/init-db` shows `INFO Schema is ready`. The finished Job is deleted automatically after one hour. Readiness opens a connection and runs `SELECT 1`; it does not check that the table exists.
 
 | Method | Path | Result |
 |---|---|---|
@@ -234,6 +234,7 @@ freshtrack/
 │   ├── namespace.yaml        # freshtrack Namespace
 │   ├── api-deployment.yaml   # api Deployment: digest-pinned image, probes, resources, security context
 │   ├── api-service.yaml      # api ClusterIP Service (internal only)
+│   ├── init-db-job.yaml      # One-off Job that creates the items table (safe to rerun)
 │   ├── postgres-service.yaml # PostgreSQL headless Service (stable DNS name)
 │   └── postgres-statefulset.yaml # PostgreSQL 18 StatefulSet with a 1Gi PVC
 ├── docs/
