@@ -8,9 +8,13 @@ ENV PYTHONUNBUFFERED=1 \
 # All following commands run inside /app in the image.
 WORKDIR /app
 
-# Temporary: CVE-2026-109518 (apt), fixed in 3.0.4 (DSA-6607-1). Remove when the base image includes it.
+# Temporary: security fixes not yet in the base image. Remove each one when the base image includes it.
+#   apt:  CVE-2026-109518, fixed in 3.0.4 (DSA-6607-1)
+#   zlib: CVE-2026-76844, CVE-2026-85091, fixed in 1:1.3.dfsg+really1.3.1-1+deb13u1 (DSA-6613-1)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+ && apt-get install -y --no-install-recommends --only-upgrade \
+      apt=3.0.4 libapt-pkg7.0=3.0.4 \
+      zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
  && rm -rf /var/lib/apt/lists/*
 
 # Install runtime packages first. Docker reuses this layer when only the code changes.
