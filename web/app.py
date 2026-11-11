@@ -11,7 +11,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from api_client import ApiClient, ApiUnavailable
-from dates import group_items
+from dates import format_day, group_items
 from flask import (
     Flask,
     abort,
@@ -141,17 +141,29 @@ def create_app():
             "location": request.args.get("location", "fridge"),
             "date_type": request.args.get("date_type", "best_before"),
         }
-        return render_template("add.html", form=form, errors={})
+        return render_add(form, {})
+
+    def render_add(form, errors, status=200):
+        return render_template(
+            "item_form.html",
+            mode="add",
+            action=url_for("add_submit"),
+            form=form,
+            errors=errors,
+        ), status
+
+    def submitted_form():
+        return {field: request.form.get(field, "").strip() for field in ITEM_FIELDS}
+
+    def friendly(errors):
+        return {field: FIELD_HELP.get(field, text) for field, text in errors.items()}
 
     @app.post("/add")
     def add_submit():
-        form = {field: request.form.get(field, "").strip() for field in ITEM_FIELDS}
+        form = submitted_form()
         item, errors = api().add_item(form)
         if errors:
-            messages = {
-                field: FIELD_HELP.get(field, text) for field, text in errors.items()
-            }
-            return render_template("add.html", form=form, errors=messages), 400
+            return render_add(form, friendly(errors), 400)
         flash(f"{item['name']} added.")
         if request.form.get("again"):
             return redirect(
@@ -179,6 +191,69 @@ def create_app():
         if location in LOCATIONS:
             return redirect(url_for("index", location=location))
         return redirect(url_for("index"))
+
+    # --- Edit an item (fix a mistake) -----------------------------------------
+    def render_edit(item_id, form, errors, status=200):
+        return render_template(
+            "item_form.html",
+            mode="edit",
+            action=url_for("edit_submit", item_id=item_id),
+            form=form,
+            errors=errors,
+        ), status
+
+    def cannot_edit(item):
+        """Send the person back to the list when the item is gone or closed."""
+        if item is None:
+            flash("That item no longer exists.")
+        else:
+            flash(
+                f"{item['name']} is already {item['status']}, so it cannot be edited."
+            )
+        return redirect(url_for("index"))
+
+    @app.get("/items/<int:item_id>/edit")
+    def edit_form(item_id):
+        item = api().get_item(item_id)
+        if item is None or item["status"] != "active":
+            return cannot_edit(item)
+        form = {field: item[field] for field in ITEM_FIELDS}
+        return render_edit(item_id, form, {})
+
+    @app.post("/items/<int:item_id>/edit")
+    def edit_submit(item_id):
+        form = submitted_form()
+        outcome, errors = api().update_item(item_id, form)
+        if outcome == "invalid":
+            return render_edit(item_id, form, friendly(errors), 400)
+        if outcome == "updated":
+            flash(f"{form['name']} updated.")
+            return redirect(url_for("index"))
+        # Closed or deleted between opening the form and saving it.
+        return cannot_edit(api().get_item(item_id))
+
+    # --- Page 3: used and discarded (the trial record) -------------------------
+    @app.get("/history")
+    def history():
+        timezone = ZoneInfo(app.config["TIMEZONE"])
+        now = today(app.config["TIMEZONE"])
+        rows = []
+        for item in api().list_closed_items():
+            closed_on = datetime.fromisoformat(item["closed_at"]).astimezone(timezone)
+            closed_day = closed_on.date()
+            rows.append(
+                {
+                    **item,
+                    "closed_on": closed_day,
+                    "closed_text": format_day(closed_day, now),
+                }
+            )
+        recent = [r for r in rows if (now - r["closed_on"]).days < 7]
+        summary = {
+            "used": sum(r["status"] == "used" for r in recent),
+            "discarded": sum(r["status"] == "discarded" for r in recent),
+        }
+        return render_template("history.html", rows=rows, summary=summary, today=now)
 
     # --- When the api is down ------------------------------------------------
     @app.errorhandler(ApiUnavailable)

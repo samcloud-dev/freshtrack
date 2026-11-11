@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 
 {% block header_action %}
-  <a class="button primary" href="{{ url_for('add_form') }}">+ Add food</a>
+  <div class="header-links">
+    <a class="button" href="{{ url_for('history') }}">History</a>
+    <a class="button primary" href="{{ url_for('add_form') }}">+ Add food</a>
+  </div>
 {% endblock %}
 
 {% block content %}
@@ -33,6 +36,7 @@
                 <span class="date">{{ item.date_text }} · {{ item.when_text }}</span>
               </div>
               <div class="actions">
+                <a class="button edit" href="{{ url_for('edit_form', item_id=item.id) }}" aria-label="Edit {{ item.name }}">Edit</a>
                 {% for status, label in [("used", "Used"), ("discarded", "Discarded")] %}
                   <form method="post" action="{{ url_for('change_status', item_id=item.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

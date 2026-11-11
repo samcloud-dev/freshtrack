@@ -20,6 +20,9 @@ class FakeApi:
         self.down = False
         self.added = []
         self.closed = []
+        self.closed_items = []
+        self.update_outcome = ("updated", {})
+        self.updated = []
 
     def _check(self):
         if self.down:
@@ -43,6 +46,22 @@ class FakeApi:
         self._check()
         self.closed.append((item_id, status))
         return self.close_outcome
+
+    def list_closed_items(self):
+        self._check()
+        return self.closed_items
+
+    def get_item(self, item_id):
+        self._check()
+        for item in self.items + self.closed_items:
+            if item["id"] == item_id:
+                return item
+        return None
+
+    def update_item(self, item_id, fields):
+        self._check()
+        self.updated.append((item_id, fields))
+        return self.update_outcome
 
 
 @pytest.fixture

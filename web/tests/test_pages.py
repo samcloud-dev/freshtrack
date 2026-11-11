@@ -224,3 +224,124 @@ def test_wrong_time_zone_stops_startup(monkeypatch):
     monkeypatch.setenv("TIMEZONE", "Mars/Olympus")
     with pytest.raises(Exception, match="Mars/Olympus"):
         web_module.create_app()
+
+
+# --- Edit -----------------------------------------------------------------------
+
+TOMATOES = {
+    **MILK,
+    "id": 3,
+    "name": "Canned tomatoes",
+    "location": "freezer",
+    "label_date": "2027-02-12",
+    "date_type": "expiration",
+}
+
+
+def test_home_cards_have_an_edit_link(client, fake_api):
+    fake_api.items = [TOMATOES]
+    assert 'href="/items/3/edit"' in client.get("/").get_data(as_text=True)
+
+
+def test_edit_form_is_filled_in(client, fake_api):
+    fake_api.items = [TOMATOES]
+    page = client.get("/items/3/edit").get_data(as_text=True)
+    assert "Edit food" in page
+    assert 'value="Canned tomatoes"' in page
+    assert 'value="freezer" checked' in page
+    assert 'value="expiration" checked' in page
+    assert 'value="2027-02-12"' in page
+    assert 'action="/items/3/edit"' in page
+    assert "Save and add another" not in page
+
+
+def test_edit_saves_and_returns_home(client, fake_api, csrf):
+    fake_api.items = [TOMATOES]
+    form = {**GOOD_FORM, "name": "Canned tomatoes", "location": "cupboard"}
+    response = client.post("/items/3/edit", data={**form, "csrf_token": csrf})
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+    assert fake_api.updated == [(3, form)]
+    assert "Canned tomatoes updated." in client.get("/").get_data(as_text=True)
+
+
+def test_edit_errors_stay_on_the_page(client, fake_api, csrf):
+    fake_api.items = [TOMATOES]
+    fake_api.update_outcome = ("invalid", {"name": "Required."})
+    form = {**GOOD_FORM, "name": ""}
+    response = client.post("/items/3/edit", data={**form, "csrf_token": csrf})
+    page = response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert "Enter a name, up to 100 characters." in page
+    assert 'action="/items/3/edit"' in page
+
+
+def test_edit_a_closed_item_is_refused(client, fake_api):
+    fake_api.closed_items = [{**MILK, "status": "used"}]
+    response = client.get("/items/2/edit")
+    assert response.status_code == 302
+    assert "Milk is already used, so it cannot be edited." in client.get("/").get_data(
+        as_text=True
+    )
+
+
+def test_edit_an_unknown_item(client):
+    response = client.get("/items/999/edit")
+    assert response.status_code == 302
+    assert "That item no longer exists." in client.get("/").get_data(as_text=True)
+
+
+def test_item_closed_while_editing(client, fake_api, csrf):
+    # Someone pressed Used on another phone before Save was pressed.
+    fake_api.closed_items = [{**TOMATOES, "status": "used"}]
+    fake_api.update_outcome = ("closed", {})
+    response = client.post("/items/3/edit", data={**GOOD_FORM, "csrf_token": csrf})
+    assert response.status_code == 302
+    assert "already used, so it cannot be edited" in client.get("/").get_data(
+        as_text=True
+    )
+
+
+def test_edit_needs_the_form_token(client, fake_api):
+    fake_api.items = [TOMATOES]
+    assert client.post("/items/3/edit", data=GOOD_FORM).status_code == 400
+    assert fake_api.updated == []
+
+
+# --- History --------------------------------------------------------------------
+
+
+def closed(name, status, closed_at):
+    return {**MILK, "name": name, "status": status, "closed_at": closed_at}
+
+
+def test_history_lists_closed_items_with_toronto_dates(client, fake_api):
+    fake_api.closed_items = [
+        # 02:30 UTC on 11 Nov is still 10 Nov in Toronto.
+        closed("Bread", "discarded", "2026-11-11T02:30:00+00:00"),
+        closed("Milk", "used", "2026-11-09T21:10:19+00:00"),
+    ]
+    page = client.get("/history").get_data(as_text=True)
+    assert "Bread" in page and "Discarded 10 Nov" in page
+    assert "Milk" in page and "Used 9 Nov" in page
+
+
+def test_history_summary_counts_the_last_7_days(client, fake_api):
+    fake_api.closed_items = [
+        closed("Milk", "used", "2026-11-10T15:00:00+00:00"),
+        closed("Juice", "used", "2026-11-08T15:00:00+00:00"),
+        closed("Bread", "discarded", "2026-11-09T15:00:00+00:00"),
+        closed("Old cheese", "used", "2026-10-20T15:00:00+00:00"),  # too old
+    ]
+    page = client.get("/history").get_data(as_text=True)
+    assert "<strong>2 used</strong>" in page
+    assert "<strong>1 discarded</strong>" in page
+
+
+def test_history_empty(client):
+    page = client.get("/history").get_data(as_text=True)
+    assert "Nothing used or discarded yet." in page
+
+
+def test_home_links_to_history(client):
+    assert 'href="/history"' in client.get("/").get_data(as_text=True)

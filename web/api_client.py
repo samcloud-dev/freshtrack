@@ -70,6 +70,39 @@ class ApiClient:
             raise ApiUnavailable
         return body["items"]
 
+    def list_closed_items(self):
+        """Used and discarded items, most recently closed first."""
+        status, body = self._call("GET", "/items?status=closed")
+        if status != 200:
+            raise ApiUnavailable
+        return body["items"]
+
+    def get_item(self, item_id):
+        """One item (active or closed), or None if it does not exist."""
+        status, body = self._call("GET", f"/items/{item_id}")
+        if status == 200:
+            return body
+        if status == 404:
+            return None
+        raise ApiUnavailable
+
+    def update_item(self, item_id, fields):
+        """Save new details for an active item.
+
+        Returns (outcome, errors): ("updated", {}), ("invalid", errors),
+        ("not_found", {}) or ("closed", {}).
+        """
+        status, body = self._call("PUT", f"/items/{item_id}", fields)
+        if status == 200:
+            return "updated", {}
+        if status == 400:
+            return "invalid", body.get("errors", {})
+        if status == 404:
+            return "not_found", {}
+        if status == 409:
+            return "closed", {}
+        raise ApiUnavailable
+
     def add_item(self, fields):
         """Returns (item, {}) when saved, or (None, errors) when the api rejects it."""
         status, body = self._call("POST", "/items", fields)

@@ -139,3 +139,22 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
 
 footer { max-width: 40rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.9rem; }
+
+/* Header links, Edit button, History page */
+.header-links { display: flex; gap: 0.5rem; }
+.button.edit { color: var(--text); }
+.actions { flex-wrap: wrap; }
+.summary {
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+.badge {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  border: 1px solid var(--line);
+}
+.badge.used { border-color: var(--later); color: var(--later); }
+.badge.discarded { border-color: var(--muted); color: var(--muted); }

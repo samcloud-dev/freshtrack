@@ -117,3 +117,39 @@ def test_body_that_is_not_json_means_unavailable(monkeypatch, client):
 def test_is_ready(monkeypatch, client, status, ready):
     answer(monkeypatch, status, {})
     assert client.is_ready() is ready
+
+
+def test_list_closed_items(monkeypatch, client):
+    seen = []
+    answer(monkeypatch, 200, {"items": [{"id": 2, "status": "used"}]}, seen)
+    assert client.list_closed_items() == [{"id": 2, "status": "used"}]
+    assert seen[0].full_url == "http://api.test/items?status=closed"
+
+
+@pytest.mark.parametrize(("status", "result"), [(200, {"id": 3}), (404, None)])
+def test_get_item(monkeypatch, client, status, result):
+    answer(monkeypatch, status, {"id": 3} if status == 200 else {})
+    assert client.get_item(3) == result
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "result"),
+    [
+        (200, {"id": 3}, ("updated", {})),
+        (400, {"errors": {"name": "Required."}}, ("invalid", {"name": "Required."})),
+        (404, {}, ("not_found", {})),
+        (409, {}, ("closed", {})),
+    ],
+)
+def test_update_item_outcomes(monkeypatch, client, status, body, result):
+    seen = []
+    answer(monkeypatch, status, body, seen)
+    assert client.update_item(3, {"name": "Milk"}) == result
+    assert seen[0].full_url == "http://api.test/items/3"
+    assert seen[0].get_method() == "PUT"
+
+
+def test_update_item_server_error(monkeypatch, client):
+    answer(monkeypatch, 503, {})
+    with pytest.raises(ApiUnavailable):
+        client.update_item(3, {})
