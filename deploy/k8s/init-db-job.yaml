@@ -1,0 +1,58 @@
+# FreshTrack init-db: a one-off task that creates the items table.
+# Safe to run again: it never removes data (see api/init_db.py).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-db
+  namespace: freshtrack
+  labels:
+    app.kubernetes.io/name: init-db
+    app.kubernetes.io/part-of: freshtrack
+spec:
+  # Retry up to 3 times if it fails (for example, the database is still starting).
+  backoffLimit: 3
+  # Give up after 2 minutes in total, even if retries are left.
+  activeDeadlineSeconds: 120
+  # Delete the finished Job 1 hour later, so it can be applied again.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: init-db
+        app.kubernetes.io/part-of: freshtrack
+    spec:
+      # Never: a failed try leaves its Pod, so I can read its logs; the Job starts a new Pod.
+      restartPolicy: Never
+      # It never talks to the Kubernetes API, so it gets no token.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: init-db
+          # Same scanned image as the api: it already contains init_db.py.
+          image: samayohub/freshtrack-api:de3370cedcf6a3f67e6ace5cadfb5043f7a6bc65@sha256:68b67bd36071d0ab6b9f572d90ac8d0514035ec722af2108cf1c47b4208570a6
+          imagePullPolicy: IfNotPresent
+          # Run the script instead of the image's default command (gunicorn).
+          command: ["python", "init_db.py"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+              ephemeral-storage: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+              ephemeral-storage: 64Mi
