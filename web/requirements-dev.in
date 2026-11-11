@@ -1,0 +1,8 @@
+# Extra packages for testing and linting only. Never installed in the production image.
+-r requirements.in
+# Keep runtime packages at exactly the versions locked in requirements.txt.
+-c requirements.txt
+pytest==9.1.1
+ruff==0.17.0
+# Security scanner for the CI scan step.
+bandit==1.9.4

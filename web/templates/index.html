@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block header_action %}
+  <a class="button primary" href="{{ url_for('add_form') }}">+ Add food</a>
+{% endblock %}
+
+{% block content %}
+  <h1>What's at home</h1>
+
+  <nav class="filters" aria-label="Filter by storage place">
+    <a href="{{ url_for('index') }}" {% if not location %}aria-current="page"{% endif %}>All</a>
+    {% for place in locations %}
+      <a href="{{ url_for('index', location=place) }}" {% if location == place %}aria-current="page"{% endif %}>{{ place | capitalize }}</a>
+    {% endfor %}
+  </nav>
+
+  {% set sections = [
+    ("past", "Date passed", "past"),
+    ("soon", "Next 3 days", "soon"),
+    ("later", "Later", "later"),
+  ] %}
+
+  {% for key, heading, style in sections %}
+    <section class="group {{ style }}">
+      <h2>{{ heading }} <span class="count">({{ groups[key] | length }})</span></h2>
+      {% if groups[key] %}
+        <ul class="items">
+          {% for item in groups[key] %}
+            <li class="item">
+              <div class="item-main">
+                <strong>{{ item.name }}</strong>
+                <span class="meta">{{ item.quantity }} · {{ item.location | capitalize }}</span>
+                <span class="date">{{ item.date_text }} · {{ item.when_text }}</span>
+              </div>
+              <div class="actions">
+                {% for status, label in [("used", "Used"), ("discarded", "Discarded")] %}
+                  <form method="post" action="{{ url_for('change_status', item_id=item.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="status" value="{{ status }}">
+                    <input type="hidden" name="name" value="{{ item.name }}">
+                    {% if location %}<input type="hidden" name="location" value="{{ location }}">{% endif %}
+                    <button type="submit" class="button {{ status }}">{{ label }}</button>
+                  </form>
+                {% endfor %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty">Nothing here.</p>
+      {% endif %}
+    </section>
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,141 @@
+/* FreshTrack: phone first, one column, large tap targets, no scripts. */
+:root {
+  --text: #1d2420;
+  --muted: #5b665f;
+  --bg: #f6f7f4;
+  --card: #ffffff;
+  --line: #d9ddd6;
+  --brand: #2f6b3f;
+  --past: #a33a2b;
+  --soon: #9a6400;
+  --later: #2f6b3f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand { font-weight: 700; font-size: 1.2rem; color: var(--brand); text-decoration: none; }
+
+main { max-width: 40rem; margin: 0 auto; padding: 1rem; }
+
+h1 { font-size: 1.5rem; margin: 0.5rem 0 1rem; }
+h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+
+.count { color: var(--muted); font-weight: 400; }
+
+.notice {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #e6f2e9;
+  border: 1px solid #b9d8c1;
+}
+.notice.warning { background: #fdf1e3; border-color: #ecc89a; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
+.filters a {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  text-decoration: none;
+}
+.filters a[aria-current="page"] { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+/* The group colour is a side stripe; the heading text always says what it means. */
+.group { margin-bottom: 1.5rem; padding-left: 0.75rem; border-left: 4px solid var(--line); }
+.group.past { border-left-color: var(--past); }
+.group.past h2 { color: var(--past); }
+.group.soon { border-left-color: var(--soon); }
+.group.soon h2 { color: var(--soon); }
+.group.later { border-left-color: var(--later); }
+
+.items { list-style: none; margin: 0; padding: 0; }
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+.item-main { display: flex; flex-direction: column; }
+.meta, .date { color: var(--muted); font-size: 0.95rem; }
+.empty { color: var(--muted); margin: 0; }
+
+.actions { display: flex; gap: 0.5rem; }
+.actions form { margin: 0; }
+
+.button {
+  display: inline-block;
+  min-height: 2.75rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.button.used { border-color: var(--later); color: var(--later); }
+.button.discarded { border-color: var(--muted); color: var(--muted); }
+.button:focus-visible, .filters a:focus-visible, input:focus-visible {
+  outline: 3px solid #f0b429;
+  outline-offset: 2px;
+}
+
+/* Add food form */
+.add-form label, .add-form legend { display: block; font-weight: 600; margin: 1rem 0 0.35rem; }
+.add-form input[type="text"], .add-form input[type="date"] {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+.add-form input[aria-invalid="true"] { border-color: var(--past); }
+fieldset { border: 0; margin: 0; padding: 0; }
+.add-form .choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  margin: 0.35rem 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+.choice input { width: 1.2rem; height: 1.2rem; }
+.hint { width: 100%; color: var(--muted); font-size: 0.9rem; padding-left: 1.7rem; }
+.error { color: var(--past); margin: 0.35rem 0 0; font-size: 0.95rem; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+
+footer { max-width: 40rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.9rem; }

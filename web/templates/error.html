@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Try again soon · FreshTrack{% endblock %}
+
+{% block content %}
+  <h1>FreshTrack can't reach its list right now</h1>
+  <p>Nothing was lost. Please try again in a minute.</p>
+  <p><a class="button" href="{{ url_for('index') }}">Try again</a></p>
+{% endblock %}
