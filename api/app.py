@@ -61,10 +61,39 @@ def create_app():
 
     @app.get("/items")
     def list_items():
-        # The active list: soonest label date first. Used and discarded items are kept
-        # in the database but not shown here.
-        items = db.list_active_items(app.config["DATABASE_URL"])
+        # Default: the active list, soonest label date first.
+        # ?status=closed: used and discarded items, most recently closed first.
+        which = request.args.get("status", "active")
+        if which == "active":
+            items = db.list_active_items(app.config["DATABASE_URL"])
+        elif which == "closed":
+            items = db.list_closed_items(app.config["DATABASE_URL"])
+        else:
+            return jsonify(errors={"status": "Must be one of: active, closed."}), 400
         return jsonify(items=[item_to_json(i) for i in items]), 200
+
+    @app.get("/items/<int:item_id>")
+    def get_item(item_id):
+        item = db.get_item(app.config["DATABASE_URL"], item_id)
+        if item is None:
+            return jsonify(error="Item not found."), 404
+        return jsonify(item_to_json(item)), 200
+
+    @app.put("/items/<int:item_id>")
+    def edit_item(item_id):
+        # Fix the details of an active item (for example a wrong location).
+        # Same checks as adding a new item; every field must be sent.
+        item, errors = validate_new_item(request.get_json(silent=True))
+        if errors:
+            return jsonify(errors=errors), 400
+        outcome, saved = db.update_item(app.config["DATABASE_URL"], item_id, item)
+        if outcome == "not_found":
+            return jsonify(error="Item not found."), 404
+        if outcome == "closed":
+            return jsonify(
+                error="Item is closed and cannot be edited.", item=item_to_json(saved)
+            ), 409
+        return jsonify(item_to_json(saved)), 200
 
     @app.post("/items")
     def add_item():
