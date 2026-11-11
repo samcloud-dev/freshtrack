@@ -594,8 +594,6 @@ automatically stopped broken or messy code from reaching `main`.
 - I can verify a Secret without exposing it by comparing byte sizes with the expected lengths.
 - Doing the Secret by hand first shows me what OpenBao + ESO will automate; only the creation step changes later.
 
-*(Samson: reword these in your own words if you like.)*
-
 **Next step**
 - Step 5: PostgreSQL as a StatefulSet with a headless Service and a PVC (new terms: StatefulSet, headless Service, PV, PVC, StorageClass).
   Check the current supported PostgreSQL versions first. Then wire `DATABASE_URL` into the api Deployment with `secretKeyRef`.
@@ -684,8 +682,6 @@ automatically stopped broken or messy code from reaching `main`.
 - The official image's own docs matter: the PostgreSQL 18 mount path changed, and old guides would have silently lost data.
 - Review before apply: my YAML worked, but checking first is the habit that catches mistakes before they reach the cluster.
 
-*(Samson: reword these in your own words if you like.)*
-
 **Next step**
 - Open one pull request for milestone 2 (`deploy/k8s-basics` → `main`). After CI passes and it is merged, mark the Kubernetes basics as Built.
 - Milestone 3: items table and routes in the api. Drop the `proof` test table before the schema work.
@@ -765,8 +761,6 @@ automatically stopped broken or messy code from reaching `main`.
 - Manual commands like `rollout undo` make the cluster drift from Git. Argo CD will later detect and correct this automatically.
 - 400 = my request broke the rules; 404 = the thing does not exist; 5xx = the server side failed.
 
-*(Samson: reword these in your own words if you like.)*
-
 **Next step**
 - Open the pull request for `deploy/items-api-image` (image bump + this entry). After merge, mark the items api Built in `docs/architecture.md`.
 - Add a PostgreSQL service container to CI so the integration tests run on every pull request.
@@ -822,12 +816,62 @@ automatically stopped broken or messy code from reaching `main`.
 - Kubernetes keeps old ReplicaSets at 0 Pods. They are the history `rollout undo` uses, and evidence of what ran before.
 - Next time: open `kubectl get pods --watch` and `kubectl get rs --watch` before `kubectl apply`, to see the new Pod become Ready before the old one is removed.
 
-*(Samson: reword these in your own words if you like.)*
-
 **Next step**
 - Add a PostgreSQL service container to CI so the integration tests run on every pull request.
 - Turn `init_db.py` into a Kubernetes Job.
 - Then: web pages (Flask templates).
+- Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
+- Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
+- Still owed: `db.py` explain-back, Entry 6 explain-back.
+
+## Entry 12 — 2026-11-11 — CI runs the integration tests against a real PostgreSQL
+
+**Problem**
+- CI only ran the unit tests, which replace the database with fakes. The 11 integration tests (real PostgreSQL) were skipped:
+  the last `main` run before this change ended with `50 passed, 11 skipped`.
+- They skip on purpose when `TEST_DATABASE_URL` is not set (`skipif` in `api/tests/test_db_integration.py`). They only ran on my laptop, when I remembered.
+- So CI could stay green with broken SQL: wrong sorting, a missing CHECK rule, or an `init_db.py` that fails on a second run.
+
+**Decision**
+- Add a **service container** to the `checks` job: GitHub Actions starts a throwaway PostgreSQL next to the job and removes it afterwards.
+- Same image as the cluster: `postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81`
+  (`deploy/k8s/postgres-statefulset.yaml`). Docker Hub's `18.6-trixie` tag had moved to a newer build (2026-11-06, inside the cooldown);
+  CI and the cluster will be updated together later.
+- A `pg_isready` health check, so the tests start only when the database is ready (no random failures).
+- The password `test` is written in the workflow: the database is empty, lives for one run on a disposable runner, and never holds real data.
+
+**Implementation**
+- Branch `ci/postgres-service`, `.github/workflows/ci.yml`:
+  - `services: postgres:` with the pinned image, `POSTGRES_PASSWORD` / `POSTGRES_DB`, port `5432:5432`,
+    and `--health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10`.
+  - Test step renamed "Tests (unit + integration)" and given `TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/freshtrack_test`.
+- README line 28 updated: the integration tests now run in CI (it said "not run in CI yet").
+- Commits `51a1eb5` and `2c4cc95`; PR #18 squash-merged as `9b86685`.
+
+**Verification**
+- Before pushing: the YAML parsed, and the parsed `checks` job had `services` next to `steps`, with the image, env, ports, options and test step as intended.
+- Branch run `42963082306`: `docker pull postgres:18.6-trixie@sha256:3a426452…`, `postgres service is healthy.`,
+  11 × `test_db_integration.py::… PASSED`, `61 passed`, 0 `SKIPPED`.
+- PR #18 checks: `checks` pass, SonarCloud pass, `ship` skipped (ships only from `main`).
+- `main` run `42964848904`: `postgres service is healthy.`, `61 passed`, `checks` and `ship` success.
+  Shipped `9b86685…@sha256:7555657c…`; same app code as the `de3370c` image on Minikube, so no redeploy needed.
+- (Screenshots: the test step with `61 passed`, and "Initialize containers" with `postgres service is healthy.`)
+
+**Troubleshooting**
+1. *Comment indentation:* the first comment line above `services:` was at column 0 while the next was indented. YAML ignores comments, so nothing broke.
+   After the fix commit both lines are at column 0, still to the left of `services:`. Cosmetic; to indent by 4 spaces the next time I edit `ci.yml`.
+2. *No PR at first:* pushing the branch ran CI, but the PR still had to be opened with `gh pr create`.
+
+**Lesson**
+- Fake-database tests prove my Python logic; only a real database proves my SQL, constraints and sorting. CI needs both.
+- A service container gives each CI run its own fresh database, so tests never depend on leftovers from an earlier run.
+- A health check turns "wait and hope" into "wait until ready". Without it, tests can fail randomly because the database is still starting.
+- Testing against the same pinned image as the cluster means "it passed in CI" says something about what runs in Minikube.
+
+**Next step**
+- Turn `init_db.py` into a Kubernetes Job, so the `items` table is created automatically instead of with `kubectl exec`.
+- Then: web pages (Flask templates).
+- Update the PostgreSQL digest in CI and the StatefulSet together, after the cooldown.
 - Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
 - Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
 - Still owed: `db.py` explain-back, Entry 6 explain-back.
