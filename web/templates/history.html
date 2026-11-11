@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Used and discarded · FreshTrack{% endblock %}
+
+{% block header_action %}
+  <a class="button" href="{{ url_for('index') }}">Back</a>
+{% endblock %}
+
+{% block content %}
+  <h1>Used and discarded</h1>
+
+  <p class="summary">
+    Last 7 days: <strong>{{ summary.used }} used</strong> · <strong>{{ summary.discarded }} discarded</strong>
+  </p>
+
+  {% if rows %}
+    <ul class="items history">
+      {% for row in rows %}
+        <li class="item">
+          <div class="item-main">
+            <strong>{{ row.name }}</strong>
+            <span class="meta">{{ row.quantity }} · {{ row.location | capitalize }}</span>
+          </div>
+          <span class="badge {{ row.status }}">{{ row.status | capitalize }} {{ row.closed_text }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">Nothing used or discarded yet.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Edit food" if mode == "edit" else "Add food" }} · FreshTrack{% endblock %}
+
+{% block header_action %}
+  <a class="button" href="{{ url_for('index') }}">Back</a>
+{% endblock %}
+
+{% macro error(field) %}
+  {% if errors[field] %}<p class="error" id="{{ field }}-error">{{ errors[field] }}</p>{% endif %}
+{% endmacro %}
+
+{% block content %}
+  <h1>{{ "Edit food" if mode == "edit" else "Add food" }}</h1>
+
+  {% if errors %}
+    <p class="notice warning" role="alert">Please check the fields marked below.</p>
+  {% endif %}
+
+  <form method="post" action="{{ action }}" class="add-form" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label for="name">Name</label>
+    <input id="name" name="name" type="text" maxlength="100" value="{{ form.name or '' }}"
+           autocomplete="off" {% if errors.name %}aria-invalid="true" aria-describedby="name-error"{% endif %}>
+    {{ error("name") }}
+
+    <label for="quantity">Quantity</label>
+    <input id="quantity" name="quantity" type="text" maxlength="50" value="{{ form.quantity or '' }}"
+           {% if errors.quantity %}aria-invalid="true" aria-describedby="quantity-error"{% endif %}>
+    {{ error("quantity") }}
+
+    <fieldset>
+      <legend>Where is it stored?</legend>
+      {% for place in ["fridge", "freezer", "cupboard"] %}
+        <label class="choice">
+          <input type="radio" name="location" value="{{ place }}" {% if form.location == place %}checked{% endif %}>
+          {{ place | capitalize }}
+        </label>
+      {% endfor %}
+      {{ error("location") }}
+    </fieldset>
+
+    <label for="label_date">Date on the label</label>
+    <input id="label_date" name="label_date" type="date" value="{{ form.label_date or '' }}"
+           {% if errors.label_date %}aria-invalid="true" aria-describedby="label_date-error"{% endif %}>
+    {{ error("label_date") }}
+
+    <fieldset>
+      <legend>What does the label say?</legend>
+      <label class="choice">
+        <input type="radio" name="date_type" value="best_before" {% if form.date_type == "best_before" %}checked{% endif %}>
+        Best before <span class="hint">quality is best before this date</span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="date_type" value="expiration" {% if form.date_type == "expiration" %}checked{% endif %}>
+        Expiration date <span class="hint">the date printed as "expires" or "use by"</span>
+      </label>
+      {{ error("date_type") }}
+    </fieldset>
+
+    <div class="form-actions">
+      <button type="submit" class="button primary">{{ "Save changes" if mode == "edit" else "Save" }}</button>
+      {% if mode == "add" %}
+        <button type="submit" class="button" name="again" value="1">Save and add another</button>
+      {% endif %}
+    </div>
+  </form>
+{% endblock %}
