@@ -1,12 +1,14 @@
 # FreshTrack — Architecture
 
-Last updated: 2026-11-11
+Last updated: 2026-11-23
 
 **Status rule:** a part is marked **Built** only when it is merged to `main` and verified.
 Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE, SCAN and SHIP
-(section 9; BUILD to SHIP for the api image only), and the `main` branch ruleset.
-The api is Built: `/health`, `/ready` and the items endpoints (`GET /items`, `POST /items`, `PATCH /items/<id>`), PR #14, verified on Minikube (Entry 10).
+(section 9; CHECK for the api and web, BUILD to SHIP for the api image only), and the `main` branch ruleset.
+The api is Built: `/health`, `/ready` and the items endpoints (`GET /items`, `POST /items`, `PATCH /items/<id>`), PR #14, verified on Minikube (Entry 10);
+plus `GET /items/<id>`, `PUT /items/<id>` and `GET /items?status=closed`, PR #22, running on Minikube (PR #24, Entry 14).
 Built on Minikube (PR #12): plain Kubernetes manifests for the Namespace, api and PostgreSQL, see section 7.
+The web code is merged (PR #23) and checked in CI (PR #26, Entry 15), but it has no image and is not deployed, so web as a running component is still Planned.
 
 ---
 
@@ -33,7 +35,7 @@ FreshTrack **organises reminders**. It never says whether food is safe to eat.
 
 | Component | What it is | Job | Status |
 |---|---|---|---|
-| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Planned |
+| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Code merged (PR #23) and checked in CI (PR #26); image and deployment Planned |
 | **api** | Flask (JSON over HTTP) | All the rules, and the only component that reads or writes the database. | Built (Minikube; PR #14, verified Entry 10) |
 | **expiry-checker** | Python script run by a Kubernetes CronJob | Every morning, asks for due items and sends one email. | Planned |
 | **PostgreSQL** | Database | Stores items, including used and discarded ones. | Built (Minikube StatefulSet; verified Entry 9) |
@@ -72,7 +74,7 @@ the board (the email).
    and sends it to the configured household address.
 4. It exits. Success or failure shows in the Job status and logs.
 
-## 5. Data model (planned, one table)
+## 5. Data model (one table; Built, PR #14, `api/schema.sql`)
 
 `items`
 
@@ -94,7 +96,7 @@ The household email address is **not** stored in the database. It comes from con
 
 | Environment | Purpose | Email | Status |
 |---|---|---|---|
-| Laptop (WSL Ubuntu) | Write and test code | Mailpit | Planned |
+| Laptop (WSL Ubuntu) | Write and test code | Mailpit | In use for code and tests (api and web virtual environments); Mailpit Planned |
 | Minikube (main lab, multi-node when useful) | Learn and practise Kubernetes, failure drills | Mailpit | **Built** for the api and PostgreSQL (PR #12): single-node profile `freshtrack` (Kubernetes 1.36, containerd, Calico); Mailpit Planned |
 | k3s on AWS EC2, ca-central-1 (about 1 week) | Household trial and demo | Amazon SES sandbox or Gmail App Password (to decide) | Planned |
 
@@ -149,21 +151,21 @@ Both containers have CPU, memory and ephemeral-storage requests and limits.
 - Hardened images: pinned base image digest, hash-locked dependencies, non-root user, small image.
 - NetworkPolicies limit who can talk to whom.
 
-## 9. Delivery pipeline (CHECK to SHIP built for the api)
+## 9. Delivery pipeline (CHECK to SHIP built for the api; CHECK built for web)
 
 **Check → Build → Prove → Scan → Ship.** Like a food factory: inspect the ingredients,
 cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops everything after it.
 
 | # | Stage | Factory version | What it does | What it catches | Status |
 |---|---|---|---|---|---|
-| 1 | CHECK | Incoming raw-material inspection | One job, `checks`, with steps in order: lint + format check (Ruff), unit tests (pytest), code scan (bandit), source scan (Trivy `fs`: vulnerable packages + secrets) | Messy or broken code, wrong logic, risky Python patterns, vulnerable runtime packages, committed secrets | **Built** (PR #4, #5) |
+| 1 | CHECK | Incoming raw-material inspection | One job, `checks`, with steps in order: lint + format check (Ruff), unit tests (pytest), code scan (bandit), source scan (Trivy `fs`: vulnerable packages + secrets) | Messy or broken code, wrong logic, risky Python patterns, vulnerable runtime packages, committed secrets | **Built** for the api (PR #4, #5) and web (job `web-checks`, PR #26; Trivy `fs` already covers `web/requirements.txt`) |
 | 2 | BUILD | Production | Build the Docker image for web, api and expiry-checker, tagged with the commit SHA | Dockerfile errors, missing dependencies | **Built** for the api (PR #7); web and expiry-checker Planned |
 | 3 | PROVE | Taste test on the line | Start the container and call `/health` (the checker runs a dry run) | An image that builds but won't start | **Built** for the api (PR #7) |
 | 4 | SCAN | QC release testing | Trivy image scan: fail on fixable HIGH/CRITICAL, report everything | Vulnerabilities and secrets in the base image, OS packages and Python packages | **Built** for the api (PR #7) |
 | 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | Nothing new: it only releases what passed every gate. A token in the `main`-only environment `dockerhub` | **Built** for the api (PR #10) |
 
 ```
-Built today (.github/workflows/ci.yml, two jobs):
+Built today (.github/workflows/ci.yml, three jobs):
 
 push (any branch) / PR → Ruff lint → Ruff format → pytest → bandit → Trivy fs
   → build api image (tag = commit SHA) → start it, call /health
@@ -175,17 +177,21 @@ push (any branch) / PR → Ruff lint → Ruff format → pytest → bandit → T
 job "ship" (push to main only, needs: checks, environment: dockerhub):
   download image.tar → docker load → tag samayohub/freshtrack-api:<commit SHA>
   → docker login (token via stdin) → docker push → docker logout (always)
+
+job "web-checks" (every push and PR, runs alongside "checks", no secrets, no database):
+  Ruff lint → Ruff format → pytest (fake api) → bandit
 SonarCloud runs alongside through Automatic Analysis (its GitHub app, not ci.yml).
 Its quality gate must pass before merge.
 ```
 
 **What the pipeline does not cover yet (honest limits)**
-- Tests use no real PostgreSQL yet; the database check is tested against an unreachable address.
-  Tests against a real PostgreSQL are planned with the first SQL code.
+- web has CHECK only: no web image is built, proven, scanned or shipped yet.
+- `ship` runs on every push to `main`, whatever changed, so a docs-only or CI-only commit still publishes a new api image
+  (same app code, new digest). Per-folder change detection is planned for when web gets an image.
 - Trivy `fs` reads `api/requirements.txt` (runtime packages) but not `api/requirements-dev.txt`
   (pytest, Ruff, bandit). Dev tools never go into the image.
 - Trivy `fs` scans files as they are now, not old commits. Git history secret scanning (gitleaks) is not in place.
-- Misconfiguration scanning (Dockerfile, Kubernetes) is not on yet. The Dockerfile exists now; Kubernetes files do not.
+- Misconfiguration scanning (Dockerfile, Kubernetes YAML in `deploy/k8s/`) and YAML linting are not on yet.
 - The image is scanned only when code is pushed. A weekly scheduled re-scan (to notice new fixes) is planned.
 - The image gate ignores HIGH/CRITICAL vulnerabilities with no fix yet; they still ship and are listed in the full report.
 
@@ -218,7 +224,9 @@ each push runs CI twice (`push` and `pull_request`); accepted because a run take
 - `timeout-minutes: 10` on each job. `concurrency` cancels outdated pull request runs; runs on `main` are never cancelled.
 - Decided at BUILD: one job for now, so the image built in one step is still there for the next steps.
   Decided at SHIP: a separate `ship` job, so the token lives only in a `main`-only job; the image reaches it as an artifact.
-  Separate jobs per app are reconsidered when web and expiry-checker get images.
+  Decided for web (PR #26): its own job `web-checks` in the same workflow, so it inherits the read-only token and
+  gets its own result; it is a required check in the ruleset. A matrix or reusable workflow is reconsidered when
+  web and expiry-checker get images.
 
 **Limits (what CI does not catch):** logic with no test, wrong settings inside the
 cluster, and runtime failures such as the database being down. Probes, Argo CD and monitoring cover those.

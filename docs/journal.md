@@ -930,3 +930,121 @@ automatically stopped broken or messy code from reaching `main`.
 - Remove the temporary `apt` and `zlib` patches when a base image (past the cooldown) contains both fixes.
 - Upgrade Trivy (0.75.0 → 0.76.x) in its own PR after the cooldown.
 - Still owed: `db.py` explain-back, Entry 6 explain-back.
+
+## Entry 14 — 2026-11-11 — api edit and history routes on Minikube; web pages merged (written 2026-11-23)
+
+**Problem**
+- The api could add, list and close items, but it could not return one item, fix a mistake (for example a wrong location),
+  or list used and discarded items, which is the trial record.
+- There were no pages. The household could only use FreshTrack with `curl`.
+
+**Decision**
+- api (PR #22):
+  - `GET /items/<id>` returns one item, active or closed, or `404`.
+  - `PUT /items/<id>` edits **active** items only, reusing the new-item validation. A used or discarded item answers `409`,
+    because closed items are trial records and must never change.
+  - `GET /items?status=closed` lists closed items, most recently closed first (up to 100).
+- web (PR #23): Flask + HTML templates, no JavaScript. It never touches the database; `api_client.py` is the only file
+  that calls the api, using Python's built-in `urllib` (no extra HTTP package).
+  - Pages: what's at home (grouped past / soon / later, filter by location), add, edit, and history.
+  - Forms protected with Flask-WTF `CSRFProtect` (1.3.0). WTForms pinned to 3.3.0, because 3.3.2 (2026-11-01) was inside the release cooldown.
+  - Browser safety: a Content-Security-Policy with no scripts and no framing, `HttpOnly` / `SameSite=Lax` / HTTPS-only session cookie.
+  - "Today" is calculated in the household's time zone (America/Toronto), not the server's.
+- Deploy the new api image the same way as before: change the image line (tag + digest) in Git, then `kubectl apply`.
+
+**Implementation**
+- PR #22, squash-merged as `bc2b049`; CI shipped `samayohub/freshtrack-api:bc2b049…@sha256:c29f61b5…`.
+- PR #24 (`bae9b90`): `deploy/k8s/api-deployment.yaml` and `deploy/k8s/init-db-job.yaml` moved to that image.
+  Applied in order on Minikube: the `init-db` Job first, then the api.
+- PR #23, squash-merged as `29f9e88`: `web/` with `app.py`, `api_client.py`, `dates.py`, templates, styles, locked requirements and tests.
+
+**Verification**
+- PR #22: 79 api tests passed locally against PostgreSQL 18.6 (the same pinned image as CI).
+- PR #24 on Minikube: `init-db` `Complete 1/1` with `Schema is ready`; api rolled out `1/1`.
+  New routes: `GET /items?status=closed` → `200`, `GET /items/3` → `200`, `GET /items/999` → `404`, `GET /items?status=eaten` → `400`.
+- Real data on Minikube afterwards: juice active, milk marked used on 2026-11-11, plus canned tomatoes and fruits.
+  The canned tomatoes were saved with location `freezer` (probably meant `cupboard`): exactly the kind of mistake the edit route is for.
+- web: 85 tests passed locally. SonarCloud passed after the fixes below.
+
+**Troubleshooting**
+1. *SonarCloud rated the web PR D for security: "API traversal via HTTP request" in `api_client._call`.*
+   An item id was placed straight into the api path, so a value like `../ready` could steer the request to another api address.
+   Fix: `item_path()` turns the id into a positive whole number with `int()` before building `/items/<id>`.
+2. *SonarCloud security hotspot: CSRF protection on the Flask app.* Fixed with Flask-WTF `CSRFProtect` on every form, instead of marking it "Safe".
+3. *A push was rejected as non-fast-forward.* GitHub's "Update branch" button had added a merge commit to the remote branch
+   that my laptop did not have. Fixed by bringing that commit in locally, then pushing again.
+4. *Gap found later:* PR #23 was merged while CI only checked `api/`. The web code was tested on my laptop only. Fixed in Entry 15.
+
+**Lesson**
+- An edit route needs a rule about history: I allow fixing active items only, so the trial record of used and discarded food stays honest.
+- Keeping all database access in the api paid off: web only needed a small client and never received a database password.
+- A scanner finding in my own code (path traversal) is cheaper to fix in the PR than after deployment, and the fix is one strict type check.
+- Every new component must join CI in the same PR as its code. Merging web before CI checked it left a gap that only a human remembered.
+
+**Next step**
+- Add `web/` to CI (Entry 15), then a web image, then a web Deployment and Service on Minikube.
+
+## Entry 15 — 2026-11-23 — web joins CI as a required check
+
+**Problem**
+- The web pages were on `main` (Entry 14), but `ci.yml` only linted, tested and scanned `api/`.
+  A broken or risky web change could still be merged.
+
+**Decision**
+- A separate job `web-checks` in the **same** workflow, not a new workflow file:
+  - it inherits the read-only token (`permissions: contents: read`) and the concurrency rule, so there is nothing to forget;
+  - each job runs on its own fresh runner and gets its own result, so a red `web-checks` points straight at web.
+- Steps mirror the api's CHECK stage: Ruff lint, Ruff format, pytest, Bandit. Same pinned action SHAs (checkout v7.0.1,
+  setup-python v7.0.0), same locked install (`--only-binary :all: --require-hashes`), same tool versions as the api
+  (Ruff 0.17.0, pytest 9.1.1, Bandit 1.9.4).
+- Least privilege: no `services` (web never talks to the database), no `environment` and no secrets (it publishes nothing).
+  The web tests use a fake api, so the job needs no network either.
+- No second Trivy scan: the existing `fs` scan in `checks` already reads the whole repository.
+- Shorter comments in `ci.yml`, one line per stage; the long explanations stay in `docs/architecture.md`.
+- After the merge, make `web-checks` a required status check in the `protect-main` ruleset.
+- yamllint 1.38.0 (2026-01-13) was considered for the YAML files in `.github/` and `deploy/`. Kept for its own PR, so each PR changes one thing.
+
+**Implementation**
+- Branch `ci/web-checks`, PR #26, squash-merged as `2ccb5d3`.
+- Ruleset `protect-main`: added `web-checks` (source: GitHub Actions) to the required status checks.
+
+**Verification**
+- Before pushing: the old and new workflows were parsed and compared with comments ignored. `name`, `on`, `permissions`,
+  `concurrency`, `checks` and `ship` were identical; `web-checks` was the only new job. File length 174 → 187 lines.
+- Local run of the job's commands: Ruff "All checks passed!", "7 files already formatted", pytest `85 passed`, Bandit no issues.
+- PR #26: `checks` pass, `web-checks` pass (11 s and 23 s), SonarCloud pass, `ship` skipped (branch).
+- `main` run `45267838963` (`2ccb5d3`): `checks`, `web-checks` and `ship` all success. Trivy `fs` listed
+  `api/requirements.txt` and `web/requirements.txt`, both with 0 findings.
+- Ruleset, through the GitHub API: required checks `checks`, `SonarCloud Code Analysis`, `web-checks`; `web-checks` is tied to
+  the GitHub Actions app (`integration_id` 15368, the same as `checks`); "up to date before merging" still on.
+- (Screenshots: PR #26 checks, the ruleset page with three required checks.)
+
+**Troubleshooting**
+1. *A file I wanted to keep local was committed.* The new `.gitignore` line was ` study-guide/` with a leading space.
+   Git treats a leading space as part of the name (only trailing spaces are ignored), so nothing matched, and `git add`
+   included a local study-guide HTML file. SonarCloud then flagged duplicated blocks in it.
+   Fix: removed the space, `git rm --cached` the file (it stays on my laptop), checked with `git check-ignore -v`, pushed a
+   new commit. The PR diff became one line, and the squash merge (#25) put only that line on `main`.
+2. *"I pushed, but CI didn't show the new job."* The workflow change was never committed: `git status` showed ` M .github/workflows/ci.yml`,
+   and the branch on GitHub pointed at the same commit as `main`. CI ran (run `45265330312`) with the old workflow.
+   Fix: commit, then push. `git push` sends commits, not files.
+3. *A new api image tag without any api change.* Merging #26 published `samayohub/freshtrack-api:2ccb5d3` with a new digest.
+   `ship` runs on every push to `main`, whatever changed, and a rebuild gives new bytes (timestamps, package lists).
+   The same had happened for `bae9b90`, `29f9e88` and `b8da549`. Minikube stays on `bc2b049`, the last api code change.
+   Accepted for now and recorded as a known limitation; per-folder change detection is planned with the web image.
+
+**Lesson**
+- A check that is not required is only advice. Making `web-checks` required means GitHub blocks the merge button, not my memory.
+- A separate job is a separate clean machine: it only gets what I give it, so the web job gets no secrets and no database.
+- Secrets go only to the job that publishes: `ship`, on `main`. A job with nothing to steal is a job that cannot leak.
+- I check ignore rules with `git check-ignore -v` before `git add`, and add files by name, so I see exactly what a commit contains.
+- Before pushing I run `git status`: ` M` means the change is still only on my laptop.
+- Tagging every `main` commit gives full traceability, but it also republishes unchanged apps; with two images I will build each only when its folder changes.
+
+**Next step**
+- A `web/Dockerfile` (hardened like the api's), then build, prove, scan and ship the web image in CI.
+- yamllint for `.github/` and `deploy/` in its own PR.
+- Delete merged feature branches.
+- Carry-overs: PostgreSQL digest update (CI + StatefulSet together), remove the temporary `apt` and `zlib` patches, Trivy 0.76.x,
+  renew the Docker Hub token before it expires.
+- Still owed: `db.py` explain-back, Entry 6 explain-back, CSRF token explain-back.
