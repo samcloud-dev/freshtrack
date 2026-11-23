@@ -1,16 +1,16 @@
-# FreshTrack CI: checks the code, then builds the api image, proves it starts and scans it.
-# Job "checks", steps top to bottom: CHECK -> TEST -> SCAN -> BUILD -> PROVE -> SCAN IMAGE.
-# Job "ship" (push to main only): pushes that exact scanned image to Docker Hub, tagged with the git SHA.
-# If a step fails, the steps after it are skipped and the run goes red.
+# FreshTrack CI: one run per push or pull request, three jobs.
+#   checks     - api: lint, test (real PostgreSQL), scan code, build, prove /health, scan image
+#   web-checks - web: lint, test, scan code (no image yet)
+#   ship       - main only: push the exact scanned api image to Docker Hub, tagged with the git SHA
+# A failed step skips the steps after it. Details: docs/architecture.md, section 9.
 name: CI
 
-# When to run: on every push to any branch, and on every pull request.
 on:
   pull_request:
   push:
     branches: ["**"]
 
-# The workflow's token can read the repo but never change it.
+# The workflow token can read the repo, never change it.
 permissions:
   contents: read
 
@@ -23,14 +23,12 @@ jobs:
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-
-# A throwaway PostgreSQL for the integration tests. Same image as the cluster.
-# Lives only for this run; the password is for this disposable database only.
+    # Throwaway PostgreSQL for the integration tests, same image as the cluster.
     services:
       postgres:
         image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
         env:
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: test # disposable test database, never real data
           POSTGRES_DB: freshtrack_test
         ports:
           - 5432:5432
@@ -41,67 +39,57 @@ jobs:
           --health-retries 10
 
     steps:
-      # Download the code without leaving a Git token on the runner.
       - name: Get the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: false # no Git token left on the runner
 
-      # Install Python 3.12.
       - name: Install Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      # Locked install: ready-made wheels only, every file checked against its hash.
+      # Wheels only, every file checked against its hash.
       - name: Install our tools (locked)
         run: "pip install --only-binary :all: --require-hashes -r api/requirements-dev.txt"
 
-      # 1. CHECK - is the code clean?
+      # CHECK
       - name: Lint
         run: ruff check api/
-
       - name: Format check
         run: ruff format --check api/
 
-      # 2. TEST - does the code work?
+      # TEST: unit + integration against the PostgreSQL above.
       - name: Tests (unit + integration)
         working-directory: api
         env:
           TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/freshtrack_test
         run: pytest -v
 
-      # 3. SCAN - is it safe?
-      # bandit: risky patterns in our own Python code (tests skipped: they use assert on purpose).
+      # SCAN CODE: risky Python (bandit; tests use assert on purpose),
+      # then vulnerable packages and secrets in the whole repo, api and web (Trivy, pinned by digest).
       - name: Scan our code (bandit)
         run: bandit -r api/ -x api/tests
-
-      # Trivy: known vulnerabilities in our packages + secrets left in our files.
-      # Official image pinned by digest; our code is mounted read-only.
       - name: Scan packages and secrets (Trivy)
         run: >-
           docker run --rm -v "$PWD:/src:ro"
           ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
           fs --scanners vuln,secret --exit-code 1 /src
 
-      # 4. BUILD - cook the image. Tagged with the commit SHA, so every image traces back to its exact code.
+      # BUILD: tagged with the commit SHA, so every image traces back to its code.
       - name: Build the api image
         run: docker build -t "freshtrack-api:$GITHUB_SHA" api/
 
-      # 5. PROVE - start the image and check it answers /health, like the local test.
-      # gunicorn needs a moment to start; curl retries every second (up to 10 times) on any error.
-      # --fail turns an HTTP error into a red step.
+      # PROVE: start it and require /health (curl retries while gunicorn starts).
       - name: Prove the image starts (/health)
         run: |
           docker run -d --name ft-api -p 8000:8000 "freshtrack-api:$GITHUB_SHA"
           curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 http://localhost:8000/health
 
-      # 6. SCAN THE IMAGE - check the finished image: Debian base + Python + our packages.
-      # Save the image to a file, so Trivy can read it without access to the Docker socket.
+      # SCAN IMAGE: Trivy reads a saved file, never the Docker socket.
+      # Report = every severity, never fails. Gate = fails on fixable HIGH/CRITICAL.
       - name: Save the image to a file
         run: docker save "freshtrack-api:$GITHUB_SHA" -o "$RUNNER_TEMP/image.tar"
-
-      # Report: list every problem at every severity. Never fails the run.
       - name: Scan the image - full report (Trivy)
         run: >-
           docker run --rm
@@ -109,9 +97,6 @@ jobs:
           -v "$RUNNER_TEMP/trivy-cache:/cache"
           ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
           image --cache-dir /cache --scanners vuln,secret --input /image.tar
-
-      # Gate: fail only on HIGH or CRITICAL problems that already have a fix.
-      # Reuses the database downloaded by the report step.
       - name: Scan the image - gate (Trivy)
         run: >-
           docker run --rm
@@ -121,7 +106,7 @@ jobs:
           image --cache-dir /cache --skip-db-update --scanners vuln,secret
           --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --input /image.tar
 
-      # Hand the scanned image to the ship job. Only on main: other branches never ship.
+      # Main only: hand the scanned image to the ship job (other branches never ship).
       - name: Hand the image to the ship job
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -131,18 +116,47 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # Always print the container's logs, even when a step above failed, so we can see why.
       - name: Show container logs
         if: always()
         run: docker logs ft-api
 
-  # 7. SHIP - push the exact scanned image to Docker Hub. Only on a push to main.
+  # web: same QC as the api (CHECK, TEST, SCAN CODE). No database, no secrets: the tests use a fake api.
+  web-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Get the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install web tools (locked)
+        run: "pip install --only-binary :all: --require-hashes -r web/requirements-dev.txt"
+
+      - name: Lint (web)
+        run: ruff check web/
+      - name: Format check (web)
+        run: ruff format --check web/
+
+      - name: Tests (web)
+        working-directory: web
+        run: pytest -v
+
+      - name: Scan web code (bandit)
+        run: bandit -r web/ -x web/tests
+
+  # SHIP: push the exact scanned image to Docker Hub. Only on a push to main.
   ship:
     needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment: dockerhub
+    environment: dockerhub # token lives here; only main can use it
     env:
       IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/freshtrack-api
     steps:
@@ -158,7 +172,7 @@ jobs:
       - name: Tag the image for Docker Hub
         run: docker tag "freshtrack-api:$GITHUB_SHA" "$IMAGE:$GITHUB_SHA"
 
-      # The token goes in through stdin, so it never appears in the command line or logs.
+      # Token through stdin, so it never appears in the command line or logs.
       - name: Log in to Docker Hub
         env:
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
@@ -168,7 +182,6 @@ jobs:
       - name: Push the image
         run: docker push "$IMAGE:$GITHUB_SHA"
 
-      # Remove the saved login from the runner, even if a step failed.
       - name: Log out of Docker Hub
         if: always()
         run: docker logout
