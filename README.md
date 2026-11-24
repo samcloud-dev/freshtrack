@@ -25,7 +25,7 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Area | Current state |
 |---|---|
 | API | Flask app with `/health` and database-aware `/ready` probes, plus grocery routes: `GET /items` (active, or `?status=closed`), `POST /items`, `GET /items/<id>`, `PUT /items/<id>`, `PATCH /items/<id>` |
-| Web | Flask + HTML templates, no JavaScript: what's at home (a summary strip of date passed / next 3 days / later, grouped lists, filter by location, a food icon on every item), add, edit, and a used-and-discarded history. Calls the api only, never the database. CSRF-protected forms and browser security headers. Image built, scanned and shipped by CI; **not yet deployed** |
+| Web | Flask + HTML templates, no JavaScript: a public landing page at `/` (hard-coded sample data only) and the household app under `/app`: what's at home (a summary strip of date passed / next 3 days / later, grouped lists, filter by location, a food icon on every item), add, edit, and a used-and-discarded history. Calls the api only, never the database. CSRF-protected forms and browser security headers. Image built, scanned and shipped by CI; **not yet deployed** |
 | Tests | api: unit tests for validation, the routes (with a fake database) and the probes; integration tests against a real PostgreSQL, skipped unless `TEST_DATABASE_URL` is set. CI sets it and runs them on every push and pull request against a throwaway PostgreSQL service container (same pinned image as the Minikube StatefulSet). web: page, api-client and date tests against a fake api (no network) |
 | Container | Both images: Gunicorn server, the same digest-pinned Python base image, hash-locked dependencies. api runs as non-root UID `10001`; web as non-root UID `10002`, with no database driver (197 MB vs the api's 216 MB) |
 | CI | api: Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans. web: the same in a separate `web-checks` job (the source scan already covers both folders) |
@@ -128,7 +128,7 @@ SECRET_KEY=local-dev-only API_URL=http://127.0.0.1:8000 COOKIE_SECURE=false \
   python -m flask --app web/app.py run --host 127.0.0.1 --port 5000
 ```
 
-Open `http://127.0.0.1:5000`. `COOKIE_SECURE=false` is only for plain `http://` on your own machine; deployments keep the default (`true`) behind HTTPS.
+Open `http://127.0.0.1:5000` for the landing page and `http://127.0.0.1:5000/app` for the household app. `COOKIE_SECURE=false` is only for plain `http://` on your own machine; deployments keep the default (`true`) behind HTTPS.
 
 Or build and start the web image (it refuses to start without `SECRET_KEY` and `API_URL`; these values are for a local test only):
 
@@ -166,7 +166,7 @@ On Minikube, PostgreSQL runs as a StatefulSet (see `deploy/k8s/`). The `items` t
 | `PUT` | `/items/<id>` | Fix the details of an active item. Same fields and checks as `POST`, all required. `200` with the updated item; `400` with every field error; `404` if there is no such item; `409` if it is used or discarded (closed items are trial records and never change) |
 | `PATCH` | `/items/<id>` | JSON `{"status":"used"}` or `{"status":"discarded"}`. `200` with the closed item; `400` for a bad status, `404` if there is no such item, `409` if it is already closed. The row is kept, never deleted |
 
-The web pages are `GET /` (active items; `?location=fridge|freezer|cupboard` filters), `GET`/`POST /add`, `GET`/`POST /items/<id>/edit`, `POST /items/<id>/status` (the Used and Discarded buttons) and `GET /history`. web also has `/health` (never checks the api) and `/ready` (`200` only when the api's own `/ready` answers `200`).
+The web pages are `GET /` (the public landing page: sample data only, never calls the api) and, under `/app`, `GET /app` (active items; `?location=fridge|freezer|cupboard` filters), `GET`/`POST /app/add`, `GET`/`POST /app/items/<id>/edit`, `POST /app/items/<id>/status` (the Used and Discarded buttons) and `GET /app/history`. web also has `/health` (never checks the api) and `/ready` (`200` only when the api's own `/ready` answers `200`).
 
 If PostgreSQL fails during a grocery request, the api returns `503`, `{"error":"Database unavailable."}`, and logs only the error type, never connection details.
 
@@ -285,7 +285,7 @@ freshtrack/
 │   ├── dates.py              # Date wording and past / soon / later grouping
 │   ├── icons.py              # Food icon by keyword (fallback: storage place); name display
 │   ├── templates/            # HTML pages (no JavaScript); _icons.html holds the inline SVG icons
-│   ├── static/               # style.css and pattern.svg (faint produce background)
+│   ├── static/               # style.css (shared), landing.css (landing page only), pattern.svg
 │   ├── Dockerfile            # web image: same pinned base as the api, non-root UID 10002
 │   ├── .dockerignore         # Keeps tests, dev tools and local files out of the build
 │   ├── requirements*.in/.txt # Declared and hash-locked dependencies

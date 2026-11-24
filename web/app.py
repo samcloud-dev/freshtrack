@@ -41,6 +41,36 @@ FIELD_HELP = {
 }
 
 
+# Example items for the landing page preview. Made up on purpose: the landing page
+# is public, so it must never show the household's real list.
+LANDING_SAMPLE = {
+    "counts": {"past": 1, "soon": 2, "later": 5},
+    "items": [
+        {
+            "name": "Milk",
+            "detail": "1 L · Fridge",
+            "icon": "bottle",
+            "group": "past",
+            "when": "2 days ago",
+        },
+        {
+            "name": "Spinach",
+            "detail": "1 bag · Fridge",
+            "icon": "leaf",
+            "group": "soon",
+            "when": "in 2 days",
+        },
+        {
+            "name": "Apples",
+            "detail": "6 · Cupboard",
+            "icon": "apple",
+            "group": "later",
+            "when": "in 3 weeks",
+        },
+    ],
+}
+
+
 def today(timezone):
     """Today's date in the household's time zone (not the server's)."""
     return datetime.now(ZoneInfo(timezone)).date()
@@ -120,8 +150,15 @@ def create_app():
             return jsonify(status="ready"), 200
         return jsonify(status="not ready"), 503
 
-    # --- Page 1: what's at home ----------------------------------------------
+    # --- Public landing page -------------------------------------------------
+    # The only page meant to be reachable without basic auth (see docs/architecture.md).
+    # It shows hard-coded SAMPLE data and never calls the api, so it can't leak the list.
     @app.get("/")
+    def landing():
+        return render_template("landing.html", sample=LANDING_SAMPLE)
+
+    # --- Page 1: what's at home (protected, under /app) -----------------------
+    @app.get("/app")
     def index():
         location = request.args.get("location")
         if location not in LOCATIONS:
@@ -135,7 +172,7 @@ def create_app():
         )
 
     # --- Page 2: add food ----------------------------------------------------
-    @app.get("/add")
+    @app.get("/app/add")
     def add_form():
         # Remember location and date type after "Save and add another".
         form = {
@@ -160,7 +197,7 @@ def create_app():
     def friendly(errors):
         return {field: FIELD_HELP.get(field, text) for field, text in errors.items()}
 
-    @app.post("/add")
+    @app.post("/app/add")
     def add_submit():
         form = submitted_form()
         item, errors = api().add_item(form)
@@ -176,7 +213,7 @@ def create_app():
         return redirect(url_for("index"))
 
     # --- Used / Discarded buttons --------------------------------------------
-    @app.post("/items/<int:item_id>/status")
+    @app.post("/app/items/<int:item_id>/status")
     def change_status(item_id):
         status = request.form.get("status", "")
         name = display_name(request.form.get("name", "Item")[:100])
@@ -215,7 +252,7 @@ def create_app():
             )
         return redirect(url_for("index"))
 
-    @app.get("/items/<int:item_id>/edit")
+    @app.get("/app/items/<int:item_id>/edit")
     def edit_form(item_id):
         item = api().get_item(item_id)
         if item is None or item["status"] != "active":
@@ -223,7 +260,7 @@ def create_app():
         form = {field: item[field] for field in ITEM_FIELDS}
         return render_edit(item_id, form, {})
 
-    @app.post("/items/<int:item_id>/edit")
+    @app.post("/app/items/<int:item_id>/edit")
     def edit_submit(item_id):
         form = submitted_form()
         outcome, errors = api().update_item(item_id, form)
@@ -236,7 +273,7 @@ def create_app():
         return cannot_edit(api().get_item(item_id))
 
     # --- Page 3: used and discarded (the trial record) -------------------------
-    @app.get("/history")
+    @app.get("/app/history")
     def history():
         timezone = ZoneInfo(app.config["TIMEZONE"])
         now = today(app.config["TIMEZONE"])

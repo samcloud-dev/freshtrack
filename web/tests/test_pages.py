@@ -46,7 +46,7 @@ def fixed_today(monkeypatch):
 
 def test_home_groups_items_and_uses_date_type_words(client, fake_api):
     fake_api.items = [MILK, JUICE, PEAS]
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     assert '<span>Date passed</span> <span class="count">1</span>' in page
     assert '<span>Next 3 days</span> <span class="count">1</span>' in page
     assert '<span>Later</span> <span class="count">1</span>' in page
@@ -57,19 +57,19 @@ def test_home_groups_items_and_uses_date_type_words(client, fake_api):
 
 def test_home_filters_by_location(client, fake_api):
     fake_api.items = [MILK, PEAS]
-    page = client.get("/?location=freezer").get_data(as_text=True)
+    page = client.get("/app?location=freezer").get_data(as_text=True)
     assert "Frozen peas" in page
     assert "Milk" not in page
 
 
 def test_home_ignores_an_unknown_location(client, fake_api):
     fake_api.items = [MILK, PEAS]
-    page = client.get("/?location=garage").get_data(as_text=True)
+    page = client.get("/app?location=garage").get_data(as_text=True)
     assert "Frozen peas" in page and "Milk" in page
 
 
 def test_home_empty_list(client):
-    response = client.get("/")
+    response = client.get("/app")
     assert response.status_code == 200
     page = response.get_data(as_text=True)
     assert "Nothing past its date. Nice work." in page
@@ -79,7 +79,7 @@ def test_home_empty_list(client):
 
 def test_home_summary_strip_counts_each_group(client, fake_api):
     fake_api.items = [MILK, JUICE, PEAS, {**PEAS, "id": 4, "name": "Ice cream"}]
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     tiles = re.findall(
         r'class="tile (\w+)" href="#\1">\s*<span class="tile-count">(\d+)</span>', page
     )
@@ -91,19 +91,20 @@ def test_home_summary_strip_counts_each_group(client, fake_api):
 
 def test_home_shows_names_capitalised_without_changing_them(client, fake_api, csrf):
     fake_api.items = [{**MILK, "name": "juice"}]
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     assert "<strong>Juice</strong>" in page
     # The form still sends the name exactly as stored.
     assert 'name="name" value="juice"' in page
     client.post(
-        "/items/2/status", data={"status": "used", "name": "juice", "csrf_token": csrf}
+        "/app/items/2/status",
+        data={"status": "used", "name": "juice", "csrf_token": csrf},
     )
-    assert "Juice marked as used." in client.get("/").get_data(as_text=True)
+    assert "Juice marked as used." in client.get("/app").get_data(as_text=True)
 
 
 def test_home_cards_and_filters_have_icons(client, fake_api):
     fake_api.items = [MILK, PEAS]  # milk -> bottle; frozen peas -> freezer snowflake
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     assert "icon-bottle" in page
     assert "icon-snowflake" in page
     assert page.count('aria-hidden="true"') >= 6  # icons are decoration only
@@ -119,7 +120,7 @@ def test_background_pattern_is_served_locally(client):
 
 
 def test_every_page_says_it_does_not_judge_safety(client):
-    for path in ("/", "/add"):
+    for path in ("/", "/app", "/app/add"):
         assert "does not judge whether food is safe" in client.get(path).get_data(
             as_text=True
         )
@@ -127,7 +128,7 @@ def test_every_page_says_it_does_not_judge_safety(client):
 
 def test_item_names_are_escaped(client, fake_api):
     fake_api.items = [{**MILK, "name": "<script>alert(1)</script>"}]
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     assert "<script>" not in page
     assert "&lt;script&gt;" in page
 
@@ -136,30 +137,32 @@ def test_item_names_are_escaped(client, fake_api):
 
 
 def test_add_form_has_sensible_defaults(client):
-    page = client.get("/add").get_data(as_text=True)
+    page = client.get("/app/add").get_data(as_text=True)
     assert 'value="fridge" checked' in page
     assert 'value="best_before" checked' in page
     assert 'name="quantity" type="text" maxlength="50" value="1"' in page
 
 
 def test_add_saves_and_returns_home_with_a_message(client, fake_api, csrf):
-    response = client.post("/add", data={**GOOD_FORM, "csrf_token": csrf})
+    response = client.post("/app/add", data={**GOOD_FORM, "csrf_token": csrf})
     assert response.status_code == 302
-    assert response.headers["Location"] == "/"
+    assert response.headers["Location"] == "/app"
     assert fake_api.added == [GOOD_FORM]
-    assert "Greek yogurt added." in client.get("/").get_data(as_text=True)
+    assert "Greek yogurt added." in client.get("/app").get_data(as_text=True)
 
 
 def test_save_and_add_another_keeps_location_and_date_type(client, csrf):
     form = {**GOOD_FORM, "location": "freezer", "date_type": "expiration"}
-    response = client.post("/add", data={**form, "csrf_token": csrf, "again": "1"})
-    assert response.headers["Location"] == "/add?location=freezer&date_type=expiration"
+    response = client.post("/app/add", data={**form, "csrf_token": csrf, "again": "1"})
+    assert (
+        response.headers["Location"] == "/app/add?location=freezer&date_type=expiration"
+    )
 
 
 def test_add_errors_stay_on_the_page_with_plain_help(client, fake_api, csrf):
     fake_api.add_errors = {"location": "Must be one of: fridge, freezer, cupboard."}
     form = {**GOOD_FORM, "location": ""}
-    response = client.post("/add", data={**form, "csrf_token": csrf})
+    response = client.post("/app/add", data={**form, "csrf_token": csrf})
     page = response.get_data(as_text=True)
     assert response.status_code == 400
     assert "Choose where it is stored." in page
@@ -167,7 +170,7 @@ def test_add_errors_stay_on_the_page_with_plain_help(client, fake_api, csrf):
 
 
 def test_add_trims_spaces(client, fake_api, csrf):
-    client.post("/add", data={**GOOD_FORM, "name": "  Milk  ", "csrf_token": csrf})
+    client.post("/app/add", data={**GOOD_FORM, "name": "  Milk  ", "csrf_token": csrf})
     assert fake_api.added[0]["name"] == "Milk"
 
 
@@ -176,28 +179,29 @@ def test_add_trims_spaces(client, fake_api, csrf):
 
 def test_mark_used_calls_the_api_and_shows_a_message(client, fake_api, csrf):
     response = client.post(
-        "/items/2/status", data={"status": "used", "name": "Milk", "csrf_token": csrf}
+        "/app/items/2/status",
+        data={"status": "used", "name": "Milk", "csrf_token": csrf},
     )
     assert response.status_code == 302
     assert fake_api.closed == [(2, "used")]
-    assert "Milk marked as used." in client.get("/").get_data(as_text=True)
+    assert "Milk marked as used." in client.get("/app").get_data(as_text=True)
 
 
 def test_mark_keeps_the_location_filter(client, csrf):
     data = {"status": "discarded", "location": "freezer", "csrf_token": csrf}
-    response = client.post("/items/3/status", data=data)
-    assert response.headers["Location"] == "/?location=freezer"
+    response = client.post("/app/items/3/status", data=data)
+    assert response.headers["Location"] == "/app?location=freezer"
 
 
 def test_mark_an_item_that_was_already_closed(client, fake_api, csrf):
     fake_api.close_outcome = "already_closed"
-    client.post("/items/2/status", data={"status": "used", "csrf_token": csrf})
-    assert "That item was already updated." in client.get("/").get_data(as_text=True)
+    client.post("/app/items/2/status", data={"status": "used", "csrf_token": csrf})
+    assert "That item was already updated." in client.get("/app").get_data(as_text=True)
 
 
 def test_mark_with_an_unknown_status_is_refused(client, fake_api, csrf):
     response = client.post(
-        "/items/2/status", data={"status": "eaten", "csrf_token": csrf}
+        "/app/items/2/status", data={"status": "eaten", "csrf_token": csrf}
     )
     assert response.status_code == 400
     assert fake_api.closed == []
@@ -211,14 +215,14 @@ def test_forms_without_the_right_token_are_refused(client, fake_api, csrf, token
     data = dict(GOOD_FORM)
     if token:
         data["csrf_token"] = token
-    assert client.post("/add", data=data).status_code == 400
+    assert client.post("/app/add", data=data).status_code == 400
     assert fake_api.added == []
 
 
 def test_pages_include_a_form_token(client, fake_api):
     fake_api.items = [MILK]
-    assert 'name="csrf_token"' in client.get("/").get_data(as_text=True)
-    assert 'name="csrf_token"' in client.get("/add").get_data(as_text=True)
+    assert 'name="csrf_token"' in client.get("/app").get_data(as_text=True)
+    assert 'name="csrf_token"' in client.get("/app/add").get_data(as_text=True)
 
 
 # --- Api down, probes, headers ---------------------------------------------
@@ -226,7 +230,7 @@ def test_pages_include_a_form_token(client, fake_api):
 
 def test_api_down_shows_a_friendly_page(client, fake_api):
     fake_api.down = True
-    response = client.get("/")
+    response = client.get("/app")
     assert response.status_code == 503
     assert "can't reach its list right now" in response.get_data(as_text=True)
 
@@ -285,71 +289,71 @@ TOMATOES = {
 
 def test_home_cards_have_an_edit_link(client, fake_api):
     fake_api.items = [TOMATOES]
-    assert 'href="/items/3/edit"' in client.get("/").get_data(as_text=True)
+    assert 'href="/app/items/3/edit"' in client.get("/app").get_data(as_text=True)
 
 
 def test_edit_form_is_filled_in(client, fake_api):
     fake_api.items = [TOMATOES]
-    page = client.get("/items/3/edit").get_data(as_text=True)
+    page = client.get("/app/items/3/edit").get_data(as_text=True)
     assert "Edit food" in page
     assert 'value="Canned tomatoes"' in page
     assert 'value="freezer" checked' in page
     assert 'value="expiration" checked' in page
     assert 'value="2027-02-12"' in page
-    assert 'action="/items/3/edit"' in page
+    assert 'action="/app/items/3/edit"' in page
     assert "Save and add another" not in page
 
 
 def test_edit_saves_and_returns_home(client, fake_api, csrf):
     fake_api.items = [TOMATOES]
     form = {**GOOD_FORM, "name": "Canned tomatoes", "location": "cupboard"}
-    response = client.post("/items/3/edit", data={**form, "csrf_token": csrf})
+    response = client.post("/app/items/3/edit", data={**form, "csrf_token": csrf})
     assert response.status_code == 302
-    assert response.headers["Location"] == "/"
+    assert response.headers["Location"] == "/app"
     assert fake_api.updated == [(3, form)]
-    assert "Canned tomatoes updated." in client.get("/").get_data(as_text=True)
+    assert "Canned tomatoes updated." in client.get("/app").get_data(as_text=True)
 
 
 def test_edit_errors_stay_on_the_page(client, fake_api, csrf):
     fake_api.items = [TOMATOES]
     fake_api.update_outcome = ("invalid", {"name": "Required."})
     form = {**GOOD_FORM, "name": ""}
-    response = client.post("/items/3/edit", data={**form, "csrf_token": csrf})
+    response = client.post("/app/items/3/edit", data={**form, "csrf_token": csrf})
     page = response.get_data(as_text=True)
     assert response.status_code == 400
     assert "Enter a name, up to 100 characters." in page
-    assert 'action="/items/3/edit"' in page
+    assert 'action="/app/items/3/edit"' in page
 
 
 def test_edit_a_closed_item_is_refused(client, fake_api):
     fake_api.closed_items = [{**MILK, "status": "used"}]
-    response = client.get("/items/2/edit")
+    response = client.get("/app/items/2/edit")
     assert response.status_code == 302
-    assert "Milk is already used, so it cannot be edited." in client.get("/").get_data(
-        as_text=True
-    )
+    assert "Milk is already used, so it cannot be edited." in client.get(
+        "/app"
+    ).get_data(as_text=True)
 
 
 def test_edit_an_unknown_item(client):
-    response = client.get("/items/999/edit")
+    response = client.get("/app/items/999/edit")
     assert response.status_code == 302
-    assert "That item no longer exists." in client.get("/").get_data(as_text=True)
+    assert "That item no longer exists." in client.get("/app").get_data(as_text=True)
 
 
 def test_item_closed_while_editing(client, fake_api, csrf):
     # Someone pressed Used on another phone before Save was pressed.
     fake_api.closed_items = [{**TOMATOES, "status": "used"}]
     fake_api.update_outcome = ("closed", {})
-    response = client.post("/items/3/edit", data={**GOOD_FORM, "csrf_token": csrf})
+    response = client.post("/app/items/3/edit", data={**GOOD_FORM, "csrf_token": csrf})
     assert response.status_code == 302
-    assert "already used, so it cannot be edited" in client.get("/").get_data(
+    assert "already used, so it cannot be edited" in client.get("/app").get_data(
         as_text=True
     )
 
 
 def test_edit_needs_the_form_token(client, fake_api):
     fake_api.items = [TOMATOES]
-    assert client.post("/items/3/edit", data=GOOD_FORM).status_code == 400
+    assert client.post("/app/items/3/edit", data=GOOD_FORM).status_code == 400
     assert fake_api.updated == []
 
 
@@ -366,7 +370,7 @@ def test_history_lists_closed_items_with_toronto_dates(client, fake_api):
         closed("Bread", "discarded", "2026-11-11T02:30:00+00:00"),
         closed("Milk", "used", "2026-11-09T21:10:19+00:00"),
     ]
-    page = client.get("/history").get_data(as_text=True)
+    page = client.get("/app/history").get_data(as_text=True)
     assert "Bread" in page and "Discarded 10 Nov" in page
     assert "Milk" in page and "Used 9 Nov" in page
 
@@ -378,30 +382,94 @@ def test_history_summary_counts_the_last_7_days(client, fake_api):
         closed("Bread", "discarded", "2026-11-09T15:00:00+00:00"),
         closed("Old cheese", "used", "2026-10-20T15:00:00+00:00"),  # too old
     ]
-    page = client.get("/history").get_data(as_text=True)
+    page = client.get("/app/history").get_data(as_text=True)
     assert "<strong>2 used</strong>" in page
     assert "<strong>1 discarded</strong>" in page
 
 
 def test_history_empty(client):
-    page = client.get("/history").get_data(as_text=True)
+    page = client.get("/app/history").get_data(as_text=True)
     assert "Nothing used or discarded yet." in page
 
 
 def test_home_links_to_history(client):
-    assert 'href="/history"' in client.get("/").get_data(as_text=True)
+    assert 'href="/app/history"' in client.get("/app").get_data(as_text=True)
 
 
 def test_a_token_from_another_session_is_refused(app, fake_api, csrf):
     # A token is tied to the browser session that received it.
     other_browser = app.test_client()
-    response = other_browser.post("/add", data={**GOOD_FORM, "csrf_token": csrf})
+    response = other_browser.post("/app/add", data={**GOOD_FORM, "csrf_token": csrf})
     assert response.status_code == 400
     assert fake_api.added == []
 
 
 def test_refused_form_shows_a_friendly_page(client):
-    response = client.post("/add", data=GOOD_FORM)
+    response = client.post("/app/add", data=GOOD_FORM)
     page = response.get_data(as_text=True)
     assert response.status_code == 400
     assert "This form has expired" in page
+
+
+# --- Public landing page ----------------------------------------------------
+
+
+def test_landing_page_never_calls_the_api(client, fake_api):
+    # The api is "down": the landing page must still work, because it only uses sample data.
+    fake_api.down = True
+    fake_api.items = [{**MILK, "name": "Real household item"}]
+    response = client.get("/")
+    assert response.status_code == 200
+    page = response.get_data(as_text=True)
+    assert "Real household item" not in page
+    for sample in ("Milk", "Spinach", "Apples", "Sample"):
+        assert sample in page
+
+
+def test_landing_page_sections_and_links(client):
+    page = client.get("/").get_data(as_text=True)
+    assert "Eat it <em>before</em> it expires." in page
+    for heading in (
+        "How it works",
+        "Fridge, freezer, cupboard",
+        "Not all dates mean the same thing",
+        "Open your kitchen",
+    ):
+        assert heading in page
+    assert 'id="how"' in page
+    assert page.count('href="/app"') >= 3  # header, hero and final call to action
+    assert "landing.css" in page
+
+
+def test_landing_page_only_describes_dates(client):
+    # FreshTrack never says whether food is safe, and no morning email exists yet.
+    page = client.get("/").get_data(as_text=True)
+    assert "Follow the guidance on the package." in page
+    assert "Don't use the food" not in page
+    assert "may still be fine" not in page
+    assert "email" not in page.lower()
+    assert "does not judge whether food is safe" in page
+
+
+def test_landing_page_has_no_forms_and_no_scripts(client):
+    response = client.get("/")
+    page = response.get_data(as_text=True)
+    assert "<form" not in page and "<script" not in page
+    assert "script-src" not in response.headers["Content-Security-Policy"]
+
+
+def test_landing_stylesheet_is_served_locally(client):
+    response = client.get("/static/landing.css")
+    assert response.status_code == 200
+    css = response.get_data(as_text=True)
+    assert (
+        "url(" not in css
+    )  # no external or data: images; the pattern lives in style.css
+    assert "@import" not in css
+
+
+def test_app_pages_moved_under_app(client):
+    assert client.get("/add").status_code == 404
+    assert client.get("/history").status_code == 404
+    assert client.get("/app/add").status_code == 200
+    assert client.get("/app/history").status_code == 200

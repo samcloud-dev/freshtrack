@@ -1,0 +1,135 @@
+/* FreshTrack landing page. Loaded after style.css, only by landing.html.
+   Colours come from style.css variables (--brand, --bg, --past-bg, ...), so both pages share one palette.
+   Every rule is scoped (.landing or lp-*) so nothing here changes the dashboard. */
+
+.landing main { max-width: none; padding: 0; }
+.lp-wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem; }
+
+/* Header: "How it works" link next to the white "Open my kitchen" button. */
+.lp-nav { align-items: center; gap: 1.1rem; }
+.lp-link { color: #fff; text-decoration: none; font-weight: 600; }
+.lp-link:hover, .lp-link:focus-visible { text-decoration: underline; }
+
+/* Buttons */
+.lp-btn { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; border-radius: 0.65rem; }
+.lp-btn-ghost { border-color: var(--brand); color: var(--brand); background: transparent; }
+.lp-btn-light { background: #fff; border-color: #fff; color: var(--brand-dark); }
+
+/* --- Hero ---------------------------------------------------------------- */
+.lp-hero { padding: 4rem 0 3rem; }
+.lp-hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 3rem; align-items: center; }
+.lp-eyebrow {
+  display: inline-block;
+  margin-bottom: 1rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  background: var(--later-bg);
+  color: var(--brand);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.lp-title { font-size: 2.9rem; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 1rem; }
+.lp-title em { font-style: normal; color: var(--brand); }
+.lp-lead { font-size: 1.15rem; color: var(--muted); margin: 0 0 1.75rem; max-width: 30em; }
+.lp-cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
+.lp-tags { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.lp-tag { padding: 0.3rem 0.8rem; border-radius: 999px; font-size: 0.85rem; font-weight: 700; }
+.lp-tag.later { background: var(--later-bg); color: var(--later); }
+.lp-tag.soon { background: var(--soon-bg); color: var(--soon); }
+.lp-tag.past { background: var(--past-bg); color: var(--past); }
+
+/* Preview card: reuses the dashboard's summary tiles, with SAMPLE items. */
+.lp-preview {
+  padding: 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  box-shadow: 0 18px 40px -24px rgba(36, 84, 58, 0.35);
+}
+.lp-preview-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.9rem; }
+.lp-sample { padding: 0.15rem 0.65rem; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 0.8rem; }
+.lp-preview .summary-strip { margin-bottom: 0.9rem; }
+.lp-preview .tile { padding: 0.5rem 0.65rem; }
+.lp-preview .tile-count { font-size: 1.4rem; }
+.lp-preview .tile-label { font-size: 0.78rem; }
+.lp-preview-items { list-style: none; margin: 0; padding: 0; }
+.lp-preview-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0; border-top: 1px solid var(--line); }
+.lp-preview-text { display: flex; flex-direction: column; min-width: 0; }
+.lp-preview-text span { color: var(--muted); font-size: 0.85rem; }
+.lp-when { margin-left: auto; padding: 0.2rem 0.65rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+
+/* Round icon badges, tinted like the date groups. */
+.lp-dot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+}
+.lp-dot.past, .lp-when.past { background: var(--past-bg); color: var(--past); }
+.lp-dot.soon, .lp-when.soon { background: var(--soon-bg); color: var(--soon); }
+.lp-dot.later, .lp-when.later { background: var(--later-bg); color: var(--later); }
+
+/* --- Sections ------------------------------------------------------------- */
+.lp-section { padding: 3.5rem 0; }
+.lp-h2 { font-size: 1.9rem; margin: 0 0 0.5rem; text-align: center; }
+.lp-sub { max-width: 36em; margin: 0 auto 2.25rem; color: var(--muted); text-align: center; }
+.lp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.lp-card { padding: 1.5rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.9rem; }
+.lp-card h3 { margin: 0 0 0.35rem; font-size: 1.12rem; }
+.lp-card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.lp-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.9rem;
+  border-radius: 0.75rem;
+  background: var(--later-bg);
+  color: var(--brand);
+}
+.lp-place { display: flex; gap: 0.9rem; align-items: flex-start; }
+
+.lp-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; max-width: 52rem; margin: 0 auto; }
+.lp-date-card { padding: 1.4rem; border-radius: 0.9rem; }
+.lp-date-card h3 { margin: 0 0 0.35rem; font-size: 1.12rem; }
+.lp-date-card p { margin: 0; color: var(--text); font-size: 0.95rem; }
+.lp-date-card.soon { background: var(--soon-bg); color: var(--soon); }
+.lp-date-card.past { background: var(--past-bg); color: var(--past); }
+
+.lp-final { padding: 2.75rem 2rem; border-radius: 1.5rem; background: var(--brand); color: #fff; text-align: center; }
+.lp-final p { margin: 0 0 1.5rem; }
+
+/* Footer: the shared disclaimer, shown as a centred pill. */
+.landing footer { max-width: none; text-align: center; padding: 1.75rem 1rem 2.5rem; }
+.landing footer p {
+  display: inline-block;
+  margin: 0;
+  padding: 0.6rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+}
+
+.lp-btn:focus-visible, .lp-link:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }
+
+/* --- Tablets and phones: one column ---------------------------------------- */
+@media (max-width: 820px) {
+  .lp-hero { padding: 2.5rem 0 2rem; }
+  .lp-hero-grid, .lp-grid-3, .lp-dates { grid-template-columns: 1fr; gap: 1.5rem; }
+  .lp-title { font-size: 2.25rem; }
+  .lp-link { display: none; }
+  .lp-section { padding: 2.5rem 0; }
+}
+
+/* Small phones (about 380px): keep the gutter and type comfortable. */
+@media (max-width: 400px) {
+  .lp-wrap { padding: 0 1rem; }
+  .lp-title { font-size: 2rem; }
+  .lp-h2 { font-size: 1.6rem; }
+  .lp-preview { padding: 1rem; }
+  .lp-when { padding: 0.15rem 0.5rem; }
+}

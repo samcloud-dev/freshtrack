@@ -90,5 +90,5 @@ def client(app):
 @pytest.fixture
 def csrf(client):
     """A real form token, read from a page the same way a browser gets one."""
-    page = client.get("/add").get_data(as_text=True)
+    page = client.get("/app/add").get_data(as_text=True)
     return re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
