@@ -145,6 +145,14 @@ Both containers have CPU, memory and ephemeral-storage requests and limits.
 
 - No user accounts in v1. The grocery list is still personal, so access is restricted.
 - **Before any internet exposure:** TLS + basic authentication at the Ingress/Gateway.
+- **One deliberate public exception (decided 2026-11-24):** the landing page at `/` and its files under `/static`
+  are reachable without basic auth. The landing page shows only hard-coded sample items and never calls the api
+  (a test proves it renders with the api down), so it cannot reveal the household's list. The app lives under `/app`
+  and stays behind basic auth. The Ingress routes only `/` (exact), `/static` (prefix) and `/app` (prefix);
+  `/health` and `/ready` are not routed (probes reach the Pod directly), and any new path is unreachable until
+  it is added on purpose.
+- The landing page never mentions the morning email until reminders exist, and its date wording describes
+  dates only (it never says whether food is safe to eat).
 - Secrets live in OpenBao/Vault and are synced into Kubernetes by External Secrets
   Operator. Reloader restarts Pods when a secret changes. Secrets are never baked
   into images and never committed.

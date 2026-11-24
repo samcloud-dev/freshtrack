@@ -6,10 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}FreshTrack{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {%- block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="top">
-    <a class="brand" href="{{ url_for('index') }}">
+    <a class="brand" href="{% block brand_href %}{{ url_for('index') }}{% endblock %}">
       <span class="brand-mark">{{ icon("leaf", 22) }}</span>
       <span>FreshTrack</span>
     </a>

@@ -69,7 +69,8 @@ body {
 main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
 
 h1 { font-size: 1.6rem; margin: 0.75rem 0 1rem; }
-h2 {
+/* Only the date-group headings are tinted bands; other pages style their own headings. */
+.group h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;

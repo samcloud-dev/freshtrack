@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{#- Public landing page. It shows only the hard-coded SAMPLE items passed in by the
+    landing() route and never calls the api, so it can be reachable without basic auth. -#}
+
+{% block title %}FreshTrack: eat it before it expires{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}">
+{% endblock %}
+{% block body_class %}landing{% endblock %}
+{% block brand_href %}{{ url_for('landing') }}{% endblock %}
+
+{% block header_action %}
+  <nav class="header-links lp-nav" aria-label="Main">
+    <a class="lp-link" href="#how">How it works</a>
+    <a class="button primary" href="{{ url_for('index') }}">Open my kitchen</a>
+  </nav>
+{% endblock %}
+
+{% block content %}
+  {#- 1. Hero -#}
+  <div class="lp-hero">
+    <div class="lp-wrap lp-hero-grid">
+      <div>
+        <span class="lp-eyebrow">Your kitchen, sorted by date</span>
+        <h1 class="lp-title">Eat it <em>before</em> it expires.</h1>
+        <p class="lp-lead">Know what's in your fridge, freezer and cupboard. FreshTrack sorts everything by the date on its label, so you see what to use first and less food ends up in the bin.</p>
+        <div class="lp-cta-row">
+          <a class="button primary lp-btn" href="{{ url_for('index') }}">{{ icon("plus", 20) }}<span>Open my kitchen</span></a>
+          <a class="button lp-btn lp-btn-ghost" href="#how">See how it works</a>
+        </div>
+        <div class="lp-tags">
+          <span class="lp-tag later">Less waste</span>
+          <span class="lp-tag soon">Fewer surprises</span>
+          <span class="lp-tag past">No more mystery jars</span>
+        </div>
+      </div>
+
+      {#- Static preview with made-up SAMPLE data. It never reads the real list. -#}
+      <div class="lp-preview" aria-label="Example of the FreshTrack dashboard, with sample items">
+        <div class="lp-preview-top"><strong>What's at home</strong><span class="lp-sample">Sample</span></div>
+        <div class="summary-strip">
+          {% for key, label in [("past", "Date passed"), ("soon", "Next 3 days"), ("later", "Later")] %}
+            <div class="tile {{ key }}">
+              <span class="tile-count">{{ sample.counts[key] }}</span>
+              <span class="tile-label">{{ label }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <ul class="lp-preview-items">
+          {% for item in sample["items"] %}
+            <li class="lp-preview-item">
+              <span class="lp-dot {{ item.group }}">{{ icon(item.icon, 20) }}</span>
+              <span class="lp-preview-text"><strong>{{ item.name }}</strong><span>{{ item.detail }}</span></span>
+              <span class="lp-when {{ item.group }}">{{ item.when }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {#- 2. How it works -#}
+  <section class="lp-section" id="how">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">How it works</h2>
+      <p class="lp-sub">Three small habits. About ten seconds each.</p>
+      <div class="lp-grid-3">
+        <div class="lp-card">
+          <span class="lp-num">{{ icon("plus", 22) }}</span>
+          <h3>1. Add food</h3>
+          <p>Type the name, where it lives, and the date on the label. That's it.</p>
+        </div>
+        <div class="lp-card">
+          <span class="lp-num">{{ icon("list", 22) }}</span>
+          <h3>2. See what's due first</h3>
+          <p>The list shows what's past its date, what's due in the next 3 days, and what can wait.</p>
+        </div>
+        <div class="lp-card">
+          <span class="lp-num">{{ icon("check", 22) }}</span>
+          <h3>3. Mark it used or tossed</h3>
+          <p>Your history shows what you ate and what you wasted, so you buy smarter.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {#- 3. Where food lives -#}
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">Fridge, freezer, cupboard</h2>
+      <p class="lp-sub">Filter by where food lives, so you check one shelf at a time.</p>
+      <div class="lp-grid-3">
+        {% for place, text in [
+          ("fridge", "Milk, leftovers, greens: the things that move fastest."),
+          ("freezer", "Stop finding a bag from last year at the very back."),
+          ("cupboard", "Cans, pasta, sauces: slow, but easy to forget."),
+        ] %}
+          <div class="lp-card lp-place">
+            <span class="lp-dot later">{{ icon(food_icon("", place), 20) }}</span>
+            <div><h3>{{ place | capitalize }}</h3><p>{{ text }}</p></div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {#- 4. Label dates. Wording describes the dates only; it never says whether food is safe. -#}
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <h2 class="lp-h2">Not all dates mean the same thing</h2>
+      <p class="lp-sub">FreshTrack keeps the two common label dates apart, so you know which one you're looking at.</p>
+      <div class="lp-dates">
+        <div class="lp-date-card soon">
+          <h3>Best before</h3>
+          <p>About quality: taste, texture, freshness. FreshTrack shows it so you can decide what to use first.</p>
+        </div>
+        <div class="lp-date-card past">
+          <h3>Expiration date</h3>
+          <p>A firmer date found on some products. FreshTrack shows it separately, so you never mix the two up. Follow the guidance on the package.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {#- 5. Final call to action -#}
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <div class="lp-final">
+        <h2 class="lp-h2">Open your kitchen</h2>
+        <p>See what needs eating first, today.</p>
+        <a class="button lp-btn lp-btn-light" href="{{ url_for('index') }}">Open my kitchen</a>
+      </div>
+    </div>
+  </section>
+{% endblock %}
