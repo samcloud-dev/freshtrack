@@ -21,6 +21,7 @@ from flask import (
     url_for,
 )
 from flask_wtf.csrf import CSRFError, CSRFProtect
+from icons import display_name, food_icon
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,10 @@ def create_app():
 
     def api():
         return app.config["API"]
+
+    # Display helpers for the templates. They change how things look, never the data.
+    app.jinja_env.filters["display_name"] = display_name
+    app.jinja_env.globals["food_icon"] = food_icon
 
     # --- Form protection (CSRF) ---------------------------------------------
     # Flask-WTF's CSRFProtect: every form carries a signed token that only our
@@ -161,7 +166,7 @@ def create_app():
         item, errors = api().add_item(form)
         if errors:
             return render_add(form, friendly(errors), 400)
-        flash(f"{item['name']} added.")
+        flash(f"{display_name(item['name'])} added.")
         if request.form.get("again"):
             return redirect(
                 url_for(
@@ -174,7 +179,7 @@ def create_app():
     @app.post("/items/<int:item_id>/status")
     def change_status(item_id):
         status = request.form.get("status", "")
-        name = request.form.get("name", "Item")[:100]
+        name = display_name(request.form.get("name", "Item")[:100])
         location = request.form.get("location")
         if status not in CLOSED_STATUSES:
             abort(400)
@@ -205,7 +210,8 @@ def create_app():
             flash("That item no longer exists.")
         else:
             flash(
-                f"{item['name']} is already {item['status']}, so it cannot be edited."
+                f"{display_name(item['name'])} is already {item['status']}, "
+                "so it cannot be edited."
             )
         return redirect(url_for("index"))
 
@@ -224,7 +230,7 @@ def create_app():
         if outcome == "invalid":
             return render_edit(item_id, form, friendly(errors), 400)
         if outcome == "updated":
-            flash(f"{form['name']} updated.")
+            flash(f"{display_name(form['name'])} updated.")
             return redirect(url_for("index"))
         # Closed or deleted between opening the form and saving it.
         return cannot_edit(api().get_item(item_id))

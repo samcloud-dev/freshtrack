@@ -21,7 +21,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements.txt
 
 # Only the application: code, page templates and styles (tests and dev tools stay out).
-COPY app.py api_client.py dates.py ./
+COPY app.py api_client.py dates.py icons.py ./
 COPY templates/ templates/
 COPY static/ static/
 

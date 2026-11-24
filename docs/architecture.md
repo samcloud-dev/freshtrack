@@ -8,7 +8,7 @@ Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE,
 The api is Built: `/health`, `/ready` and the items endpoints (`GET /items`, `POST /items`, `PATCH /items/<id>`), PR #14, verified on Minikube (Entry 10);
 plus `GET /items/<id>`, `PUT /items/<id>` and `GET /items?status=closed`, PR #22, running on Minikube (PR #24, Entry 14).
 Built on Minikube (PR #12): plain Kubernetes manifests for the Namespace, api and PostgreSQL, see section 7.
-The web code is merged (PR #23) and checked in CI (PR #26, Entry 15); its image is built, proven and scanned in CI (PR #28, Entry 16) but not shipped or deployed, so web as a running component is still Planned.
+The web code is merged (PR #23) and checked in CI (PR #26, Entry 15); its image is built, proven and scanned in CI (PR #28, Entry 16) and shipped to Docker Hub (PR #30, Entry 17), but not deployed, so web as a running component is still Planned.
 
 ---
 
@@ -35,7 +35,7 @@ FreshTrack **organises reminders**. It never says whether food is safe to eat.
 
 | Component | What it is | Job | Status |
 |---|---|---|---|
-| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Code merged (PR #23) and checked in CI (PR #26); image built and scanned in CI (PR #28); shipping and deployment Planned |
+| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Code merged (PR #23) and checked in CI (PR #26); image built and scanned in CI (PR #28) and shipped (PR #30); deployment Planned |
 | **api** | Flask (JSON over HTTP) | All the rules, and the only component that reads or writes the database. | Built (Minikube; PR #14, verified Entry 10) |
 | **expiry-checker** | Python script run by a Kubernetes CronJob | Every morning, asks for due items and sends one email. | Planned |
 | **PostgreSQL** | Database | Stores items, including used and discarded ones. | Built (Minikube StatefulSet; verified Entry 9) |
@@ -151,7 +151,7 @@ Both containers have CPU, memory and ephemeral-storage requests and limits.
 - Hardened images: pinned base image digest, hash-locked dependencies, non-root user, small image.
 - NetworkPolicies limit who can talk to whom.
 
-## 9. Delivery pipeline (CHECK to SHIP built for the api; CHECK to SCAN built for web)
+## 9. Delivery pipeline (CHECK to SHIP built for the api and web)
 
 **Check → Build → Prove → Scan → Ship.** Like a food factory: inspect the ingredients,
 cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops everything after it.
@@ -162,10 +162,10 @@ cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops eve
 | 2 | BUILD | Production | Build the Docker image for web, api and expiry-checker, tagged with the commit SHA | Dockerfile errors, missing dependencies | **Built** for the api (PR #7) and web (PR #28); expiry-checker Planned |
 | 3 | PROVE | Taste test on the line | Start the container and call `/health` (the checker runs a dry run) | An image that builds but won't start | **Built** for the api (PR #7) and web (PR #28, with throwaway `SECRET_KEY` and `API_URL`) |
 | 4 | SCAN | QC release testing | Trivy image scan: fail on fixable HIGH/CRITICAL, report everything | Vulnerabilities and secrets in the base image, OS packages and Python packages | **Built** for the api (PR #7) and web (PR #28) |
-| 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | Nothing new: it only releases what passed every gate. A token in the `main`-only environment `dockerhub` | **Built** for the api (PR #10) |
+| 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | Nothing new: it only releases what passed every gate. A token in the `main`-only environment `dockerhub` | **Built** for the api (PR #10) and web (job `ship-web`, PR #30) |
 
 ```
-Built today (.github/workflows/ci.yml, three jobs):
+Built today (.github/workflows/ci.yml, four jobs):
 
 push (any branch) / PR → Ruff lint → Ruff format → pytest → bandit → Trivy fs
   → build api image (tag = commit SHA) → start it, call /health
@@ -181,16 +181,22 @@ job "ship" (push to main only, needs: checks, environment: dockerhub):
 job "web-checks" (every push and PR, runs alongside "checks", no secrets, no database):
   Ruff lint → Ruff format → pytest (fake api) → bandit
   → build web image (tag = commit SHA) → start it with throwaway SECRET_KEY / API_URL, call /health
-  → docker save → Trivy image: full report → Trivy image: gate → show container logs (always)
-  (not shipped yet)
+  → docker save → Trivy image: full report → Trivy image: gate
+  → (main only) hand web-image.tar to the ship-web job as an artifact (kept 1 day)
+  → show container logs (always)
+
+job "ship-web" (push to main only, needs: web-checks, environment: dockerhub):
+  download web-image.tar → docker load → tag samayohub/freshtrack-web:<commit SHA>
+  → docker login (token via stdin) → docker push → docker logout (always)
 SonarCloud runs alongside through Automatic Analysis (its GitHub app, not ci.yml).
 Its quality gate must pass before merge.
 ```
 
 **What the pipeline does not cover yet (honest limits)**
-- The web image is built, proven and scanned, then discarded: there is no web hand-off or ship job yet.
-- `ship` runs on every push to `main`, whatever changed, so a docs-only or CI-only commit still publishes a new api image
-  (same app code, new digest). To be revisited when web is shipped.
+- `ship` and `ship-web` run on every push to `main`, whatever changed, so a docs-only or CI-only commit still publishes
+  new api and web images (same app code, new digests). Decided (2026-11-24): keep one workflow with explicit jobs while there
+  are two apps, because it is easiest to read and explain; move to a reusable workflow with per-folder change detection
+  when the expiry-checker becomes the third image.
 - Trivy `fs` reads `api/requirements.txt` (runtime packages) but not `api/requirements-dev.txt`
   (pytest, Ruff, bandit). Dev tools never go into the image.
 - Trivy `fs` scans files as they are now, not old commits. Git history secret scanning (gitleaks) is not in place.

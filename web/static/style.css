@@ -1,14 +1,20 @@
-/* FreshTrack: phone first, one column, large tap targets, no scripts. */
+/* FreshTrack: phone first, large tap targets, no scripts.
+   Warm "fresh market" look: cream background, green brand, red / amber / green for dates.
+   Colour is never the only signal: every coloured thing also says what it means in words. */
 :root {
   --text: #1d2420;
-  --muted: #5b665f;
-  --bg: #f6f7f4;
+  --muted: #56615a;
+  --bg: #fbf7ef;
   --card: #ffffff;
-  --line: #d9ddd6;
+  --line: #e4ddcf;
   --brand: #2f6b3f;
+  --brand-dark: #24543a;
   --past: #a33a2b;
-  --soon: #9a6400;
+  --past-bg: #fbe9e5;
+  --soon: #8a5a00;
+  --soon-bg: #fcf1d9;
   --later: #2f6b3f;
+  --later-bg: #e5f1e7;
 }
 
 * { box-sizing: border-box; }
@@ -19,39 +25,109 @@ body {
   font-size: 1.05rem;
   line-height: 1.45;
   color: var(--text);
-  background: var(--bg);
+  background-color: var(--bg);
+  /* Very faint produce outlines (static/pattern.svg). Cards stay solid white on top. */
+  background-image: url("pattern.svg");
+  background-size: 180px 180px;
 }
 
+/* --- Header band ------------------------------------------------------- */
 .top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--brand);
+  color: #fff;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: #fff;
+  text-decoration: none;
+}
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--brand);
+}
+
+.top .button { background: transparent; border-color: rgba(255, 255, 255, 0.7); color: #fff; }
+.top .button.primary { background: #fff; border-color: #fff; color: var(--brand-dark); font-weight: 600; }
+
+main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+
+h1 { font-size: 1.6rem; margin: 0.75rem 0 1rem; }
+h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
   background: var(--card);
-  border-bottom: 1px solid var(--line);
 }
 
-.brand { font-weight: 700; font-size: 1.2rem; color: var(--brand); text-decoration: none; }
-
-main { max-width: 40rem; margin: 0 auto; padding: 1rem; }
-
-h1 { font-size: 1.5rem; margin: 0.5rem 0 1rem; }
-h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
-
-.count { color: var(--muted); font-weight: 400; }
+.count {
+  min-width: 1.8rem;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  background: var(--card);
+  text-align: center;
+  font-weight: 700;
+}
 
 .notice {
   padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  background: #e6f2e9;
+  border-radius: 0.6rem;
+  background: var(--later-bg);
   border: 1px solid #b9d8c1;
 }
 .notice.warning { background: #fdf1e3; border-color: #ecc89a; }
 
+/* --- Summary strip ------------------------------------------------------ */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.tile-count { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+.tile-label { font-size: 0.9rem; font-weight: 600; }
+.tile.past { background: var(--past-bg); color: var(--past); border-color: #f0c9c1; }
+.tile.soon { background: var(--soon-bg); color: var(--soon); border-color: #ecd6a4; }
+.tile.later { background: var(--later-bg); color: var(--later); border-color: #c4ddc9; }
+
+/* --- Location filters --------------------------------------------------- */
 .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
 .filters a {
-  padding: 0.45rem 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.6rem;
+  padding: 0.4rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--card);
@@ -60,34 +136,60 @@ h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; marg
 }
 .filters a[aria-current="page"] { background: var(--brand); border-color: var(--brand); color: #fff; }
 
-/* The group colour is a side stripe; the heading text always says what it means. */
+/* --- Date groups: tinted heading band plus a side stripe ----------------- */
 .group { margin-bottom: 1.5rem; padding-left: 0.75rem; border-left: 4px solid var(--line); }
 .group.past { border-left-color: var(--past); }
-.group.past h2 { color: var(--past); }
+.group.past h2 { background: var(--past-bg); color: var(--past); }
 .group.soon { border-left-color: var(--soon); }
-.group.soon h2 { color: var(--soon); }
+.group.soon h2 { background: var(--soon-bg); color: var(--soon); }
 .group.later { border-left-color: var(--later); }
+.group.later h2 { background: var(--later-bg); color: var(--later); }
 
+/* --- Item cards ---------------------------------------------------------- */
 .items { list-style: none; margin: 0; padding: 0; }
 .item {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
   margin-bottom: 0.6rem;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 0.6rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(29, 36, 32, 0.05);
 }
-.item-main { display: flex; flex-direction: column; }
+.food-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: var(--later-bg);
+  color: var(--brand);
+}
+.group.past .food-icon { background: var(--past-bg); color: var(--past); }
+.group.soon .food-icon { background: var(--soon-bg); color: var(--soon); }
+.item-main { display: flex; flex-direction: column; flex: 1 1 12rem; min-width: 0; }
+.item-main strong { overflow-wrap: anywhere; }
 .meta, .date { color: var(--muted); font-size: 0.95rem; }
-.empty { color: var(--muted); margin: 0; }
+.empty {
+  color: var(--muted);
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: 0.75rem;
+}
 
-.actions { display: flex; gap: 0.5rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .actions form { margin: 0; }
 
+.icon { flex: none; }
+
+/* --- Buttons ------------------------------------------------------------ */
 .button {
   display: inline-block;
   min-height: 2.75rem;
@@ -103,12 +205,14 @@ h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; marg
 .button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .button.used { border-color: var(--later); color: var(--later); }
 .button.discarded { border-color: var(--muted); color: var(--muted); }
-.button:focus-visible, .filters a:focus-visible, input:focus-visible {
+.button.edit { color: var(--text); }
+.button:focus-visible, .filters a:focus-visible, .tile:focus-visible, .brand:focus-visible,
+input:focus-visible {
   outline: 3px solid #f0b429;
   outline-offset: 2px;
 }
 
-/* Add food form */
+/* --- Add and edit form -------------------------------------------------- */
 .add-form label, .add-form legend { display: block; font-weight: 600; margin: 1rem 0 0.35rem; }
 .add-form input[type="text"], .add-form input[type="date"] {
   width: 100%;
@@ -138,23 +242,31 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .error { color: var(--past); margin: 0.35rem 0 0; font-size: 0.95rem; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
 
-footer { max-width: 40rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.9rem; }
-
-/* Header links, Edit button, History page */
-.header-links { display: flex; gap: 0.5rem; }
-.button.edit { color: var(--text); }
-.actions { flex-wrap: wrap; }
+/* --- Footer, header links, history page --------------------------------- */
+footer { max-width: 46rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.9rem; }
+.header-links { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .summary {
   padding: 0.75rem 1rem;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
 }
 .badge {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.9rem;
   border: 1px solid var(--line);
+  background: var(--card);
 }
 .badge.used { border-color: var(--later); color: var(--later); }
 .badge.discarded { border-color: var(--muted); color: var(--muted); }
+.history .badge { margin-left: auto; }
+
+/* Small phones (about 380px and below): tighter tiles, pills may wrap. */
+@media (max-width: 400px) {
+  main { padding: 0.75rem; }
+  .tile { padding: 0.55rem 0.6rem; }
+  .tile-count { font-size: 1.4rem; }
+  .tile-label { font-size: 0.8rem; }
+  .filters a { padding: 0.35rem 0.7rem; }
+}

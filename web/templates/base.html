@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon -%}
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,7 +9,10 @@
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="{{ url_for('index') }}">FreshTrack</a>
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="brand-mark">{{ icon("leaf", 22) }}</span>
+      <span>FreshTrack</span>
+    </a>
     {% block header_action %}{% endblock %}
   </header>
 
