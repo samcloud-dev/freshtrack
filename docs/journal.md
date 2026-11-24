@@ -1048,3 +1048,68 @@ automatically stopped broken or messy code from reaching `main`.
 - Carry-overs: PostgreSQL digest update (CI + StatefulSet together), remove the temporary `apt` and `zlib` patches, Trivy 0.76.x,
   renew the Docker Hub token before it expires.
 - Still owed: `db.py` explain-back, Entry 6 explain-back, CSRF token explain-back.
+
+## Entry 16 — 2026-11-24 — web image built, proven and scanned in CI
+
+**Problem**
+- web was checked in CI (Entry 15), but it had no image, so there was nothing Kubernetes could run.
+
+**Decision**
+- `web/Dockerfile`, hardened like the api's:
+  - the **same base image and digest** as the api (`python:3.12.15-slim-trixie@sha256:a6e34c…`), so both apps share one tested base
+    and are updated together;
+  - the **same temporary `apt` and `zlib` patches**, otherwise the Trivy gate fails on the CVEs from Entries 10 and 11;
+  - single stage (every package is a ready-made wheel), hash-locked install;
+  - an **explicit `COPY` list** (`app.py`, `api_client.py`, `dates.py`, `templates/`, `static/`) instead of `COPY . .`;
+    `.dockerignore` is the second safety net;
+  - its own non-root user, **UID 10002** (the api uses 10001), so the two apps never share an identity;
+  - no secrets in the image: `SECRET_KEY` and `API_URL` arrive at run time, and web refuses to start without them.
+- Container port 8000, the same as the api. Each container (and each Pod) has its own network address, so the numbers
+  cannot clash; a clash is only possible on the host side, which is why my local test mapped laptop port 8001 to container port 8000.
+- Build, prove and scan in the **same job** (`web-checks`): a built image exists only on the runner that built it.
+- The prove step passes throwaway values (`SECRET_KEY=ci-throwaway-value`, `API_URL=https://api.invalid`). `/health` never calls the api,
+  and `.invalid` is a reserved name that never resolves.
+- Not shipped yet: shipping web is the next step.
+
+**Implementation**
+- Branch `build/web-image`, PR #28, squash-merged as `8851614`: `web/Dockerfile`, and in `ci.yml` the steps
+  Build → Prove (`/health`) → Save → Trivy full report → Trivy gate → Show web container logs (always).
+
+**Verification**
+- Local, before CI (predictions first; all four were right):
+  - `/health` → `200 {"status":"ok"}`, served by gunicorn, with the Content-Security-Policy, `X-Content-Type-Options` and `Referrer-Policy` headers.
+  - `/ready` → `503 {"status":"not ready"}`: there is no api behind `api.invalid`, so web correctly refuses traffic.
+  - `id` → `uid=10002(freshtrack-web)`. `ls /app` → `api_client.py app.py dates.py requirements.txt static templates` (no tests).
+  - Size: 197 MB on disk, 47.9 MB compressed (api: 216 MB, 52.5 MB). Smaller because web has no database driver.
+- PR #28 (runs `45351533554` and `45351537495`): `checks`, `web-checks` (44–48 s, all 13 steps success, `85 passed`) and SonarCloud pass; `ship` skipped.
+- Trivy, web image: full report Debian 13.7 = 253 findings (UNKNOWN 17, LOW 81, MEDIUM 102, HIGH 53, CRITICAL 0),
+  plus a second table of 6 (LOW 1, MEDIUM 5). Gate: 0 fixable HIGH/CRITICAL, passed. The 53 HIGH have no released fix yet.
+- After the merge: Docker Hub got a new api tag `8851614` (no api code change: the known limitation), and `samayohub/freshtrack-web`
+  does not exist yet (HTTP 404), as predicted.
+
+**Troubleshooting**
+1. *SonarCloud quality gate failed: "Make sure that using clear-text protocols is safe here."* It flagged `http://` in
+   `API_URL=http://api.invalid`, not the throwaway `SECRET_KEY`. Not a real risk (the address can never resolve and `/health`
+   never calls it), but the fix was free: `https://api.invalid`. Fixed in code instead of marking it Safe.
+2. *The container's logs were gone.* I stopped a container started with `--rm`, which also deletes it, and its logs with it.
+   The image stayed, so `docker images` still worked. Collect logs before stopping.
+3. *The expected `api unreachable` line was not in the logs.* That run's `docker logs` showed only gunicorn's start-up lines, and
+   `/ready` had not been called in it. A local check confirmed web prints `api unreachable: URLError` when `/ready` fails.
+   Finding: the app's own log lines have no timestamp or level (Python logging is not configured), unlike gunicorn's. Later improvement, for both apps.
+4. *Cosmetic:* a comment in the Dockerfile started with a space (fixed); three comment lines in `ci.yml` are still mis-indented.
+
+**Lesson**
+- One base image for both apps means one set of base vulnerabilities to track and one upgrade to make.
+- Two containers can use the same port number because each has its own network address; only host port mappings can collide.
+- A smoke test must give the app what it needs to start, but nothing real: throwaway values, and an address that can never resolve.
+- `http` versus `https` is unencrypted versus encrypted, not internal versus external. When a scanner flags something and the fix costs nothing, I fix it rather than add an exception.
+- A container's logs belong to the container, not the image. With `--rm`, I read the logs before I stop it.
+- Least privilege also makes images smaller: web carries no database driver because it never talks to the database.
+
+**Next step**
+- Ship the web image: create `samayohub/freshtrack-web` on Docker Hub, add a hand-off step and a ship job for web.
+  Decide first: keep one workflow with explicit jobs, or move to a reusable workflow.
+- Then: a weekly scheduled re-scan of the deployed images; yamllint; the web Deployment and Service on Minikube.
+- Later improvement: configure Python logging (timestamp and level) in both apps before Loki.
+- Carry-overs: PostgreSQL digest update (CI + StatefulSet together), remove the temporary `apt` and `zlib` patches, Trivy 0.76.x,
+  renew the Docker Hub token before it expires.

@@ -8,7 +8,7 @@ Everything else is **Planned**. Built so far: the CI stages CHECK, BUILD, PROVE,
 The api is Built: `/health`, `/ready` and the items endpoints (`GET /items`, `POST /items`, `PATCH /items/<id>`), PR #14, verified on Minikube (Entry 10);
 plus `GET /items/<id>`, `PUT /items/<id>` and `GET /items?status=closed`, PR #22, running on Minikube (PR #24, Entry 14).
 Built on Minikube (PR #12): plain Kubernetes manifests for the Namespace, api and PostgreSQL, see section 7.
-The web code is merged (PR #23) and checked in CI (PR #26, Entry 15), but it has no image and is not deployed, so web as a running component is still Planned.
+The web code is merged (PR #23) and checked in CI (PR #26, Entry 15); its image is built, proven and scanned in CI (PR #28, Entry 16) but not shipped or deployed, so web as a running component is still Planned.
 
 ---
 
@@ -35,7 +35,7 @@ FreshTrack **organises reminders**. It never says whether food is safe to eat.
 
 | Component | What it is | Job | Status |
 |---|---|---|---|
-| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Code merged (PR #23) and checked in CI (PR #26); image and deployment Planned |
+| **web** | Flask + HTML templates, no JavaScript framework | The pages people see. Has no database access; it calls the api. | Code merged (PR #23) and checked in CI (PR #26); image built and scanned in CI (PR #28); shipping and deployment Planned |
 | **api** | Flask (JSON over HTTP) | All the rules, and the only component that reads or writes the database. | Built (Minikube; PR #14, verified Entry 10) |
 | **expiry-checker** | Python script run by a Kubernetes CronJob | Every morning, asks for due items and sends one email. | Planned |
 | **PostgreSQL** | Database | Stores items, including used and discarded ones. | Built (Minikube StatefulSet; verified Entry 9) |
@@ -151,7 +151,7 @@ Both containers have CPU, memory and ephemeral-storage requests and limits.
 - Hardened images: pinned base image digest, hash-locked dependencies, non-root user, small image.
 - NetworkPolicies limit who can talk to whom.
 
-## 9. Delivery pipeline (CHECK to SHIP built for the api; CHECK built for web)
+## 9. Delivery pipeline (CHECK to SHIP built for the api; CHECK to SCAN built for web)
 
 **Check → Build → Prove → Scan → Ship.** Like a food factory: inspect the ingredients,
 cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops everything after it.
@@ -159,9 +159,9 @@ cook, taste, get QC release, dispatch. Each stage is a gate; a failure stops eve
 | # | Stage | Factory version | What it does | What it catches | Status |
 |---|---|---|---|---|---|
 | 1 | CHECK | Incoming raw-material inspection | One job, `checks`, with steps in order: lint + format check (Ruff), unit tests (pytest), code scan (bandit), source scan (Trivy `fs`: vulnerable packages + secrets) | Messy or broken code, wrong logic, risky Python patterns, vulnerable runtime packages, committed secrets | **Built** for the api (PR #4, #5) and web (job `web-checks`, PR #26; Trivy `fs` already covers `web/requirements.txt`) |
-| 2 | BUILD | Production | Build the Docker image for web, api and expiry-checker, tagged with the commit SHA | Dockerfile errors, missing dependencies | **Built** for the api (PR #7); web and expiry-checker Planned |
-| 3 | PROVE | Taste test on the line | Start the container and call `/health` (the checker runs a dry run) | An image that builds but won't start | **Built** for the api (PR #7) |
-| 4 | SCAN | QC release testing | Trivy image scan: fail on fixable HIGH/CRITICAL, report everything | Vulnerabilities and secrets in the base image, OS packages and Python packages | **Built** for the api (PR #7) |
+| 2 | BUILD | Production | Build the Docker image for web, api and expiry-checker, tagged with the commit SHA | Dockerfile errors, missing dependencies | **Built** for the api (PR #7) and web (PR #28); expiry-checker Planned |
+| 3 | PROVE | Taste test on the line | Start the container and call `/health` (the checker runs a dry run) | An image that builds but won't start | **Built** for the api (PR #7) and web (PR #28, with throwaway `SECRET_KEY` and `API_URL`) |
+| 4 | SCAN | QC release testing | Trivy image scan: fail on fixable HIGH/CRITICAL, report everything | Vulnerabilities and secrets in the base image, OS packages and Python packages | **Built** for the api (PR #7) and web (PR #28) |
 | 5 | SHIP | Dispatch | Push to Docker Hub tagged with the git SHA, **only on `main`** | Nothing new: it only releases what passed every gate. A token in the `main`-only environment `dockerhub` | **Built** for the api (PR #10) |
 
 ```
@@ -180,14 +180,17 @@ job "ship" (push to main only, needs: checks, environment: dockerhub):
 
 job "web-checks" (every push and PR, runs alongside "checks", no secrets, no database):
   Ruff lint → Ruff format → pytest (fake api) → bandit
+  → build web image (tag = commit SHA) → start it with throwaway SECRET_KEY / API_URL, call /health
+  → docker save → Trivy image: full report → Trivy image: gate → show container logs (always)
+  (not shipped yet)
 SonarCloud runs alongside through Automatic Analysis (its GitHub app, not ci.yml).
 Its quality gate must pass before merge.
 ```
 
 **What the pipeline does not cover yet (honest limits)**
-- web has CHECK only: no web image is built, proven, scanned or shipped yet.
+- The web image is built, proven and scanned, then discarded: there is no web hand-off or ship job yet.
 - `ship` runs on every push to `main`, whatever changed, so a docs-only or CI-only commit still publishes a new api image
-  (same app code, new digest). Per-folder change detection is planned for when web gets an image.
+  (same app code, new digest). To be revisited when web is shipped.
 - Trivy `fs` reads `api/requirements.txt` (runtime packages) but not `api/requirements-dev.txt`
   (pytest, Ruff, bandit). Dev tools never go into the image.
 - Trivy `fs` scans files as they are now, not old commits. Git history secret scanning (gitleaks) is not in place.
