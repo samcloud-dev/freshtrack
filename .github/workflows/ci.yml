@@ -1,6 +1,6 @@
 # FreshTrack CI: one run per push or pull request, three jobs.
 #   checks     - api: lint, test (real PostgreSQL), scan code, build, prove /health, scan image
-#   web-checks - web: lint, test, scan code (no image yet)
+#   web-checks - web: lint, test, scan code, build, prove /health, scan image (not shipped yet)
 #   ship       - main only: push the exact scanned api image to Docker Hub, tagged with the git SHA
 # A failed step skips the steps after it. Details: docs/architecture.md, section 9.
 name: CI
@@ -120,7 +120,7 @@ jobs:
         if: always()
         run: docker logs ft-api
 
-  # web: same QC as the api (CHECK, TEST, SCAN CODE). No database, no secrets: the tests use a fake api.
+  # web: same QC as the api, except ship. No database, no secrets: the tests use a fake api.
   web-checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -150,6 +150,42 @@ jobs:
       - name: Scan web code (bandit)
         run: bandit -r web/ -x web/tests
 
+  # BUILD: tagged with the commit SHA.
+      - name: Build the web image
+        run: docker build -t "freshtrack-web:$GITHUB_SHA" web/
+
+  # PROVE: web refuses to start without SECRET_KEY and API_URL, so pass throwaway values.
+      # /health never calls the api, so a fake api address is enough here.
+      - name: Prove the web image starts (/health)
+        run: |
+          docker run -d --name ft-web -p 8000:8000 \
+            -e SECRET_KEY=ci-throwaway-value -e API_URL=http://api.invalid \
+            "freshtrack-web:$GITHUB_SHA"
+          curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 http://localhost:8000/health
+
+   # SCAN IMAGE: same Trivy report and gate as the api.
+      - name: Save the web image to a file
+        run: docker save "freshtrack-web:$GITHUB_SHA" -o "$RUNNER_TEMP/web-image.tar"
+      - name: Scan the web image - full report (Trivy)
+        run: >-
+          docker run --rm
+          -v "$RUNNER_TEMP/web-image.tar:/image.tar:ro"
+          -v "$RUNNER_TEMP/trivy-cache:/cache"
+          ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          image --cache-dir /cache --scanners vuln,secret --input /image.tar
+      - name: Scan the web image - gate (Trivy)
+        run: >-
+          docker run --rm
+          -v "$RUNNER_TEMP/web-image.tar:/image.tar:ro"
+          -v "$RUNNER_TEMP/trivy-cache:/cache"
+          ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          image --cache-dir /cache --skip-db-update --scanners vuln,secret
+          --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --input /image.tar
+
+      - name: Show web container logs
+        if: always()
+        run: docker logs ft-web
+        
   # SHIP: push the exact scanned image to Docker Hub. Only on a push to main.
   ship:
     needs: checks
