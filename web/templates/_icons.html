@@ -1,0 +1,34 @@
+{#- Small line icons drawn for FreshTrack, as inline SVG: nothing to download,
+    no licence to track, and allowed by the page's Content-Security-Policy.
+    They are decoration only (aria-hidden): the text next to them says the same thing. -#}
+{% macro icon(name, size=24) -%}
+<svg class="icon icon-{{ name }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if name == "bottle" -%}
+  <path d="M10 2.5h4v3l1.5 2.5v11.5a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2V8L10 5.5z"/><path d="M8.5 12h7"/>
+{%- elif name == "can" -%}
+  <ellipse cx="12" cy="5" rx="6" ry="2"/><path d="M6 5v14c0 1.1 2.7 2 6 2s6-.9 6-2V5"/><path d="M6 10c0 1.1 2.7 2 6 2s6-.9 6-2"/>
+{%- elif name == "apple" -%}
+  <path d="M12 7.5c-1.6-1.3-5-1.6-6.4 1.4S5 16 7 19s3.6 2.6 5 1.6c1.4 1 3 1.4 5-1.6s1.8-7.1.4-10.1S13.6 6.2 12 7.5z"/><path d="M12 7.5c0-2.2 1.1-3.7 3.2-4.4"/>
+{%- elif name == "leaf" -%}
+  <path d="M5 19C5 11 10 5 19 5c0 9-6 14-14 14z"/><path d="M5 19l8-8"/>
+{%- elif name == "bread" -%}
+  <path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4c0 1-.6 1.6-1.5 2v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7C4.6 11.6 4 11 4 10z"/><path d="M9 6.5c1 1 1 3 0 4M15 6.5c1 1 1 3 0 4"/>
+{%- elif name == "cheese" -%}
+  <path d="M3 15.5L14 7l7 3.5V19H3z"/><path d="M3 15.5h18"/><circle cx="8.5" cy="17.3" r=".9"/><circle cx="15.5" cy="12.6" r="1"/>
+{%- elif name == "egg" -%}
+  <path d="M12 3c-3.4 0-6 5.4-6 10a6 6 0 0 0 12 0c0-4.6-2.6-10-6-10z"/>
+{%- elif name == "meat" -%}
+  <path d="M15.5 3.5a5 5 0 0 1 3.5 8.6l-3 3-4-4 3-3"/><path d="M12 11.1a5 5 0 0 1 3.5-7.6"/><path d="M12 11l-5.5 5.5"/><circle cx="5" cy="18" r="1.8"/><circle cx="7.5" cy="20" r="1.3"/>
+{%- elif name == "fish" -%}
+  <path d="M3 12c3-4.5 8-6 12-4l4-3v14l-4-3c-4 2-9 .5-12-4z"/><circle cx="8" cy="11" r=".8"/>
+{%- elif name == "snowflake" -%}
+  <path d="M12 2.5v19M4 7.2l16 9.6M4 16.8l16-9.6"/><path d="M9.5 4L12 6.5 14.5 4M9.5 20L12 17.5 14.5 20"/>
+{%- elif name == "fridge" -%}
+  <rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M6 10h12M9 5.5v2M9 13v3"/>
+{%- elif name == "cupboard" -%}
+  <rect x="3.5" y="4" width="17" height="14.5" rx="1.5"/><path d="M12 4v14.5M10 10.5v2M14 10.5v2M6 18.5v2M18 18.5v2"/>
+{%- else -%}
+  <path d="M3 10h18l-2 9a2 2 0 0 1-2 1.5H7A2 2 0 0 1 5 19z"/><path d="M8 10l3-6M16 10l-3-6"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}

@@ -1,5 +1,6 @@
 """Page tests: the api is replaced by FakeApi (see conftest.py)."""
 
+import re
 from datetime import date
 
 import app as web_module
@@ -46,9 +47,9 @@ def fixed_today(monkeypatch):
 def test_home_groups_items_and_uses_date_type_words(client, fake_api):
     fake_api.items = [MILK, JUICE, PEAS]
     page = client.get("/").get_data(as_text=True)
-    assert 'Date passed <span class="count">(1)</span>' in page
-    assert 'Next 3 days <span class="count">(1)</span>' in page
-    assert 'Later <span class="count">(1)</span>' in page
+    assert '<span>Date passed</span> <span class="count">1</span>' in page
+    assert '<span>Next 3 days</span> <span class="count">1</span>' in page
+    assert '<span>Later</span> <span class="count">1</span>' in page
     assert "Best before 1 Nov · 10 days ago" in page
     assert "Best before 13 Nov · in 2 days" in page
     assert "Expiration date 1 Mar 2027" in page
@@ -70,7 +71,51 @@ def test_home_ignores_an_unknown_location(client, fake_api):
 def test_home_empty_list(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert response.get_data(as_text=True).count("Nothing here.") == 3
+    page = response.get_data(as_text=True)
+    assert "Nothing past its date. Nice work." in page
+    assert "Nothing due in the next 3 days. Nice work." in page
+    assert "Nothing else stored for later." in page
+
+
+def test_home_summary_strip_counts_each_group(client, fake_api):
+    fake_api.items = [MILK, JUICE, PEAS, {**PEAS, "id": 4, "name": "Ice cream"}]
+    page = client.get("/").get_data(as_text=True)
+    tiles = re.findall(
+        r'class="tile (\w+)" href="#\1">\s*<span class="tile-count">(\d+)</span>', page
+    )
+    assert tiles == [("past", "1"), ("soon", "1"), ("later", "2")]
+    # Each tile links to its section further down the page.
+    for group in ("past", "soon", "later"):
+        assert f'id="{group}"' in page
+
+
+def test_home_shows_names_capitalised_without_changing_them(client, fake_api, csrf):
+    fake_api.items = [{**MILK, "name": "juice"}]
+    page = client.get("/").get_data(as_text=True)
+    assert "<strong>Juice</strong>" in page
+    # The form still sends the name exactly as stored.
+    assert 'name="name" value="juice"' in page
+    client.post(
+        "/items/2/status", data={"status": "used", "name": "juice", "csrf_token": csrf}
+    )
+    assert "Juice marked as used." in client.get("/").get_data(as_text=True)
+
+
+def test_home_cards_and_filters_have_icons(client, fake_api):
+    fake_api.items = [MILK, PEAS]  # milk -> bottle; frozen peas -> freezer snowflake
+    page = client.get("/").get_data(as_text=True)
+    assert "icon-bottle" in page
+    assert "icon-snowflake" in page
+    assert page.count('aria-hidden="true"') >= 6  # icons are decoration only
+    for place_icon in ("icon-basket", "icon-fridge", "icon-cupboard"):
+        assert place_icon in page
+
+
+def test_background_pattern_is_served_locally(client):
+    response = client.get("/static/pattern.svg")
+    assert response.status_code == 200
+    assert response.mimetype == "image/svg+xml"
+    assert "<script" not in response.get_data(as_text=True)
 
 
 def test_every_page_says_it_does_not_judge_safety(client):

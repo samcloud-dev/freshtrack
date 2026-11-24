@@ -1113,3 +1113,51 @@ automatically stopped broken or messy code from reaching `main`.
 - Later improvement: configure Python logging (timestamp and level) in both apps before Loki.
 - Carry-overs: PostgreSQL digest update (CI + StatefulSet together), remove the temporary `apt` and `zlib` patches, Trivy 0.76.x,
   renew the Docker Hub token before it expires.
+
+## Entry 17 — 2026-11-24 — web image shipped to Docker Hub; one workflow kept on purpose
+
+**Problem**
+- The web image was built, proven and scanned in every run (Entry 16), then thrown away. Kubernetes needs a published image.
+
+**Decision**
+- Ship web exactly like the api: a `main`-only hand-off of the scanned file as an artifact (`web-image`, kept 1 day),
+  and a `ship-web` job that pushes that exact file, tagged `samayohub/freshtrack-web:<commit SHA>`.
+- `ship-web` needs only `web-checks`: each app ships on its own checks (independent releases). Both checks are still
+  required by the ruleset before anything can merge.
+- Same `main`-only `dockerhub` environment and token. A Docker Hub token cannot be limited to one repository, which is
+  why the environment lock matters.
+- **One workflow with explicit jobs, not a reusable workflow (yet).** With two apps, one file read top to bottom is easier
+  for a reviewer to follow and for me to explain; the copy-paste is small and visible. A reusable workflow with per-folder
+  change detection and one summary check is planned for when the expiry-checker becomes the third image.
+- Docker Hub repository `samayohub/freshtrack-web` created as public, with a short description and an overview.
+
+**Implementation**
+- Branch `ship/web-image`, PR #30, squash-merged as `86860e9`: a hand-off step at the end of `web-checks`, a `ship-web` job
+  at the end of `ci.yml`, header comment updated (four jobs), comment indentation fixed.
+
+**Verification**
+- Before pushing: the parsed workflow showed `checks` and `ship` identical to `main`; `web-checks` gained only the hand-off
+  step; `ship-web` differed from `ship` only in the job it needs, the artifact name, the file name and the image name.
+- PR #30: `checks` and `web-checks` passed; `ship` and `ship-web` were skipped (branch, not `main`).
+- After the merge, Docker Hub: `samayohub/freshtrack-api:86860e9` (digest `sha256:1b56b28b…`) and the first web image,
+  `samayohub/freshtrack-web:86860e9` (digest `sha256:6c8d2eac…`), both pushed at 20:14 UTC.
+
+**Troubleshooting**
+1. *The `ship-web` block was pasted inside the `ship` job.* It landed after the api's "Tag the image" step. YAML accepted it:
+   `ship` would have lost its log-in, push and log-out steps, and `ship-web` would have pushed twice. On the branch both ship
+   jobs are skipped, so CI would have been green and the api would silently have stopped shipping after the merge.
+   Caught before pushing by comparing the parsed jobs with `main` ("`ship` unchanged: False", nine steps in `ship-web`).
+   Fixed by moving the block to the end of the file.
+2. *Prediction:* I expected `ship-web` to run on the branch because the job exists. It was skipped: its `if:` allows only a push to `main`.
+3. *Both images have the same tag.* Expected: the tag records the commit they were built from. An image is identified by
+   repository, tag and digest, and the two digests differ. Each Deployment names its own repository, so Argo CD cannot mix them up.
+
+**Lesson**
+- A YAML file that parses can still be wrong. Comparing the parsed jobs with `main` found a block in the wrong job that CI on a branch would never have shown.
+- Each app ships the exact file that was scanned, from its own job, on its own checks.
+- The same tag in two repositories is not a clash: the tag says which commit, the repository says which app, the digest says which bytes.
+- I chose readability over removing duplication for two apps, and wrote down when I will change that: at the third image.
+
+**Next step**
+- Dashboard refresh (warm look, summary strip, food icons) in the same PR as this entry; then the web Deployment, Service and Secret on Minikube.
+- Then: weekly scheduled re-scan of the deployed images, yamllint.

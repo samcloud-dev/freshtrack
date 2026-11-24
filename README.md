@@ -4,7 +4,7 @@ A household food expiry tracker designed to help people remember what they have,
 
 FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own household as the first intended user. It connects a practical food-storage problem with hands-on work in testing, container security, continuous integration, Kubernetes, and operations.
 
-**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) is in progress: the api's grocery routes (add, list, edit, mark used or discarded, history) run on Minikube, tested in CI against a real PostgreSQL, and a Kubernetes Job creates the database table. The web pages are written and checked in CI, and their image is built, proven and scanned in CI, but not yet shipped or deployed. Email reminders are planned.
+**Current stage:** Milestones 1 and 2 are done: container CI publishes the api image to Docker Hub, and the Kubernetes basics run on Minikube, with the api Ready and connected to PostgreSQL. Milestone 3 (household tracking) is in progress: the api's grocery routes (add, list, edit, mark used or discarded, history) run on Minikube, tested in CI against a real PostgreSQL, and a Kubernetes Job creates the database table. The web pages are written and checked in CI, and their image is built, proven, scanned and shipped to Docker Hub, but not yet deployed. Email reminders are planned.
 
 ## Contents
 
@@ -25,11 +25,11 @@ FreshTrack is Samson's DevOps, Cloud, and SRE portfolio project, with his own ho
 | Area | Current state |
 |---|---|
 | API | Flask app with `/health` and database-aware `/ready` probes, plus grocery routes: `GET /items` (active, or `?status=closed`), `POST /items`, `GET /items/<id>`, `PUT /items/<id>`, `PATCH /items/<id>` |
-| Web | Flask + HTML templates, no JavaScript: what's at home (grouped past / soon / later, filter by location), add, edit, and a used-and-discarded history. Calls the api only, never the database. CSRF-protected forms and browser security headers. Checked in CI and its image is built and scanned in CI; **not yet shipped or deployed** |
+| Web | Flask + HTML templates, no JavaScript: what's at home (a summary strip of date passed / next 3 days / later, grouped lists, filter by location, a food icon on every item), add, edit, and a used-and-discarded history. Calls the api only, never the database. CSRF-protected forms and browser security headers. Image built, scanned and shipped by CI; **not yet deployed** |
 | Tests | api: unit tests for validation, the routes (with a fake database) and the probes; integration tests against a real PostgreSQL, skipped unless `TEST_DATABASE_URL` is set. CI sets it and runs them on every push and pull request against a throwaway PostgreSQL service container (same pinned image as the Minikube StatefulSet). web: page, api-client and date tests against a fake api (no network) |
 | Container | Both images: Gunicorn server, the same digest-pinned Python base image, hash-locked dependencies. api runs as non-root UID `10001`; web as non-root UID `10002`, with no database driver (197 MB vs the api's 216 MB) |
-| CI | api: Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans. web: the same in a separate `web-checks` job (the source scan already covers both folders); the web image is not shipped yet |
-| Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) on Docker Hub, tagged with the commit SHA, pushed only from `main`. A web image is planned |
+| CI | api: Ruff, pytest, Bandit, Trivy source scan, image build, startup smoke test, and image scans. web: the same in a separate `web-checks` job (the source scan already covers both folders) |
+| Registry publishing | [`samayohub/freshtrack-api`](https://hub.docker.com/r/samayohub/freshtrack-api) and [`samayohub/freshtrack-web`](https://hub.docker.com/r/samayohub/freshtrack-web) on Docker Hub, tagged with the commit SHA, pushed only from `main` |
 | Household features | In progress: items table and api routes to add, list, edit, mark used or discarded, and list history, with tests, running on Minikube (journal Entries 10 and 14). The web pages exist and are tested but are not deployed. Planned: the morning reminder |
 | Platform add-ons | Calico is installed with the Minikube profile and enforces NetworkPolicies. Planned: Ingress with TLS and basic auth, NetworkPolicies, OpenBao + External Secrets Operator + Reloader (milestone 4); Prometheus, Grafana, Loki with Grafana Alloy, Alertmanager and Argo CD (milestone 6) |
 | Deployment | Built on Minikube (PR #12): plain manifests in `deploy/k8s/` for the Namespace, api Deployment, api Service, and PostgreSQL 18 (headless Service + StatefulSet with a persistent volume), plus a database Secret created by hand (values not in Git), applied to a Minikube lab. The api Pod is Ready, `/ready` reaches the database through the Service, and data survived deleting the database Pod (journal Entry 9). A one-off `init-db` Job creates the `items` table (PR #20, journal Entry 13). Then Helm, and later a short k3s trial on AWS |
@@ -209,7 +209,7 @@ Runtime dependencies are declared in `api/requirements.in` and `web/requirements
 
 ## CI pipeline
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every branch push and every pull request, with three jobs. The `checks` job runs the first four stages for the api in order. The `web-checks` job runs at the same time on its own runner: Ruff lint and formatting, pytest and Bandit for `web/`, then it builds the web image, starts it with throwaway `SECRET_KEY` and `API_URL` values and requires `/health`, and runs the same Trivy report and gate. It has no database, no network to the api and no secrets, and it does not ship. The `ship` job runs only after a push to `main`, once `checks` has passed:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every branch push and every pull request, with four jobs. The `checks` job runs the first four stages for the api in order. The `web-checks` job runs at the same time on its own runner: Ruff lint and formatting, pytest and Bandit for `web/`, then it builds the web image, starts it with throwaway `SECRET_KEY` and `API_URL` values and requires `/health`, and runs the same Trivy report and gate. It has no database, no network to the api and no secrets. The `ship` job (api) runs only after a push to `main`, once `checks` has passed; the `ship-web` job does the same for web once `web-checks` has passed, so each app ships on its own checks:
 
 | Stage | Checks |
 |---|---|
@@ -217,7 +217,7 @@ Runtime dependencies are declared in `api/requirements.in` and `web/requirements
 | Build | Build the API image tagged with the Git commit SHA |
 | Prove | Start the image and require `/health` to respond successfully |
 | Scan | Save the image to a tar file; run a full Trivy report, then a gate for fixable HIGH/CRITICAL vulnerabilities with secret scanning enabled |
-| Ship | `main` only: receive the scanned image tar from `checks` as a one-day artifact, load it, tag it `samayohub/freshtrack-api:<commit SHA>`, log in with a token from the `main`-only `dockerhub` environment, push, log out |
+| Ship | `main` only: receive the scanned image tar from `checks` as a one-day artifact, load it, tag it `samayohub/freshtrack-api:<commit SHA>`, log in with a token from the `main`-only `dockerhub` environment, push, log out. `ship-web` does the same with the web image, tagged `samayohub/freshtrack-web:<commit SHA>` |
 
 A failed step blocks subsequent normal steps. Container logs are requested even after failure. The full image report shows findings at all severities; the vulnerability gate uses `--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`.
 
@@ -225,7 +225,9 @@ SonarCloud is documented as running separately through its GitHub app's Automati
 
 The `main` branch is protected by a repository ruleset: changes need a pull request, the `checks` and `web-checks` jobs and SonarCloud must pass, the branch must be up to date, and force pushes and deletion are blocked, with no bypass. The image that ships is the exact file that was scanned; it is not rebuilt.
 
-Known limitation: `ship` runs on every push to `main`, whatever changed, so a commit that touches only docs or CI still publishes a new api image under its commit SHA (same app code, a new digest). Building and shipping each image only when its own folder changes is planned for when web gets an image.
+Both images built from one commit share that commit's SHA as their tag. That is not a clash: an image is identified by repository, tag and digest, and each Deployment names its own repository.
+
+Known limitation: `ship` and `ship-web` run on every push to `main`, whatever changed, so a commit that touches only docs or CI still publishes new api and web images under its commit SHA (same app code, new digests). Building each image only when its own folder changes is planned with the move to a reusable workflow, when the expiry-checker becomes the third image.
 
 The [engineering journal](docs/journal.md) records a failure drill where an old base image passed the build and health check but failed the image vulnerability gate. Those historical scan results are evidence from that run, not a claim about today's vulnerability status.
 
@@ -281,8 +283,9 @@ freshtrack/
 │   ├── app.py                # Flask pages, CSRF protection, security headers, probes
 │   ├── api_client.py         # The only file that calls the api (no database access)
 │   ├── dates.py              # Date wording and past / soon / later grouping
-│   ├── templates/            # HTML pages (no JavaScript)
-│   ├── static/style.css      # Page styles
+│   ├── icons.py              # Food icon by keyword (fallback: storage place); name display
+│   ├── templates/            # HTML pages (no JavaScript); _icons.html holds the inline SVG icons
+│   ├── static/               # style.css and pattern.svg (faint produce background)
 │   ├── Dockerfile            # web image: same pinned base as the api, non-root UID 10002
 │   ├── .dockerignore         # Keeps tests, dev tools and local files out of the build
 │   ├── requirements*.in/.txt # Declared and hash-locked dependencies

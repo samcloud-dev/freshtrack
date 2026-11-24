@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block title %}Used and discarded · FreshTrack{% endblock %}
 
@@ -17,8 +18,9 @@
     <ul class="items history">
       {% for row in rows %}
         <li class="item">
+          <span class="food-icon">{{ icon(food_icon(row.name, row.location)) }}</span>
           <div class="item-main">
-            <strong>{{ row.name }}</strong>
+            <strong>{{ row.name | display_name }}</strong>
             <span class="meta">{{ row.quantity }} · {{ row.location | capitalize }}</span>
           </div>
           <span class="badge {{ row.status }}">{{ row.status | capitalize }} {{ row.closed_text }}</span>
@@ -26,6 +28,6 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="empty">Nothing used or discarded yet.</p>
+    <p class="empty">Nothing used or discarded yet. Items you mark as used or discarded appear here.</p>
   {% endif %}
 {% endblock %}
